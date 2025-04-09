@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Gym Owner Registration | ProFitMart</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* Custom styles */
+    .password-requirements {
+      font-size: 0.8rem;
+      color: #6b7280;
+      margin-top: 0.5rem;
+    }
+    .password-requirements ul {
+      list-style-type: none;
+      padding-left: 0;
+      margin-top: 0.25rem;
+    }
+    .password-requirements li {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+    .password-requirements li i {
+      margin-right: 0.5rem;
+    }
+    .valid-requirement {
+      color: #10b981;
+    }
+    .invalid-requirement {
+      color: #ef4444;
+    }
+    .password-toggle {
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: #6b7280;
+    }
+    
+    /* Logo animation */
+    .logo-container {
+      animation: pulse 2s infinite alternate;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.05); }
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #6366f1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4f46e5;
+    }
+    
+    /* Form focus styles */
+    input:focus, select:focus {
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    
+    /* Custom file input */
+    .custom-file-input::-webkit-file-upload-button {
+      visibility: hidden;
+      width: 0;
+    }
+    .custom-file-input::before {
+      content: 'Choose file';
+      display: inline-block;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 0.5rem 1rem;
+      outline: none;
+      white-space: nowrap;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.875rem;
+      color: #4b5563;
+    }
+    .custom-file-input:hover::before {
+      background: #e5e7eb;
+    }
+    .custom-file-input:active::before {
+      background: #d1d5db;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-blue-50 min-h-screen">
+  <div class="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
+    <!-- Header with logo -->
+    <div class="flex justify-center mb-8">
+      <div class="logo-container">
+        <div class="w-20 h-20 bg-gradient-to-r from-indigo-600 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+          <div class="relative">
+            <span class="text-white text-3xl font-bold">PFM</span>
+            <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-5">
+        <!-- Left side - Image and info -->
+        <div class="hidden lg:block lg:col-span-2 bg-gradient-to-br from-indigo-600 to-blue-500 p-12 text-white">
+          <div class="h-full flex flex-col justify-between">
+            <div>
+              <h2 class="text-3xl font-bold mb-6">Join Our Network of Fitness Professionals</h2>
+              <p class="mb-8 text-indigo-100">Register your gym with ProFitMart and connect with fitness enthusiasts across the country.</p>
+              
+              <div class="space-y-6">
+                <div class="flex items-start">
+                  <div class="flex-shrink-0">
+                    <i class="fas fa-check-circle text-2xl text-indigo-200"></i>
+                  </div>
+                  <div class="ml-4">
+                    <h3 class="text-xl font-semibold">Multiple Gym Management</h3>
+                    <p class="text-indigo-100">Manage all your gym locations from a single dashboard</p>
+                  </div>
+                </div>
+                
+                <div class="flex items-start">
+                  <div class="flex-shrink-0">
+                    <i class="fas fa-check-circle text-2xl text-indigo-200"></i>
+                  </div>
+                  <div class="ml-4">
+                    <h3 class="text-xl font-semibold">Flexible Membership Plans</h3>
+                    <p class="text-indigo-100">Offer daily, weekly, monthly, or yearly memberships</p>
+                  </div>
+                </div>
+                
+                <div class="flex items-start">
+                  <div class="flex-shrink-0">
+                    <i class="fas fa-check-circle text-2xl text-indigo-200"></i>
+                  </div>
+                  <div class="ml-4">
+                    <h3 class="text-xl font-semibold">Secure Payment Processing</h3>
+                    <p class="text-indigo-100">Integrated payment gateway for hassle-free transactions</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-auto">
+              <p class="text-sm text-indigo-200">Already have an account? <a href="../login.php" class="text-white font-medium underline">Login here</a></p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Right side - Registration form -->
+        <div class="col-span-1 lg:col-span-3 p-8 md:p-12">
+          <h2 class="text-2xl font-bold text-gray-800 mb-6">Gym Owner Registration</h2>
+          
+          <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-md" role="alert">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-red-500"></i>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm" id="error-text"></p>
+              </div>
+            </div>
+          </div>
+          
+          <form id="registration-form" action="register.php" method="POST" enctype="multipart/form-data" class="space-y-6">
+            <!-- Form grid layout -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Full Name -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name <span class="text-red-500">*</span></label>
+                <input type="text" id="name" name="name" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- Email -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
+                <input type="email" id="email" name="email" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- Phone -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number <span class="text-red-500">*</span></label>
+                <input type="tel" id="phone" name="phone" required pattern="[0-9]{10}"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+                <p class="text-xs text-gray-500 mt-1">10-digit number without spaces or dashes</p>
+              </div>
+
+              <!-- Password -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password <span class="text-red-500">*</span></label>
+                <div class="relative">
+                  <input type="password" id="password" name="password" required
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+                  <span class="password-toggle" id="password-toggle">
+                    <i class="far fa-eye"></i>
+                  </span>
+                </div>
+                <div class="password-requirements mt-2">
+                  <p class="font-medium text-xs text-gray-600">Password must contain:</p>
+                  <ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 mt-1">
+                    <li id="length-check" class="text-xs"><i class="fas fa-times"></i> 8+ characters</li>
+                    <li id="uppercase-check" class="text-xs"><i class="fas fa-times"></i> Uppercase letter</li>
+                    <li id="lowercase-check" class="text-xs"><i class="fas fa-times"></i> Lowercase letter</li>
+                    <li id="number-check" class="text-xs"><i class="fas fa-times"></i> Number</li>
+                    <li id="special-check" class="text-xs"><i class="fas fa-times"></i> Special character</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Address -->
+              <div class="col-span-2">
+                <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Address <span class="text-red-500">*</span></label>
+                <input type="text" id="address" name="address" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- City -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="city" class="block text-sm font-medium text-gray-700 mb-1">City <span class="text-red-500">*</span></label>
+                <input type="text" id="city" name="city" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- State -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="state" class="block text-sm font-medium text-gray-700 mb-1">State <span class="text-red-500">*</span></label>
+                <input type="text" id="state" name="state" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- Country -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="country" class="block text-sm font-medium text-gray-700 mb-1">Country <span class="text-red-500">*</span></label>
+                <input type="text" id="country" name="country" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- Zip Code -->
+              <div class="col-span-2 sm:col-span-1">
+                <label for="zip_code" class="block text-sm font-medium text-gray-700 mb-1">Zip Code <span class="text-red-500">*</span></label>
+                <input type="text" id="zip_code" name="zip_code" required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200">
+              </div>
+
+              <!-- Profile Picture -->
+              <div class="col-span-2">
+                <label for="profile_picture" class="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
+                <div class="flex items-center space-x-4">
+                  <div id="profile-preview" class="h-16 w-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                    <svg class="h-10 w-10 text-gray-300" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  </div>
+                  <div class="flex-1">
+                    <input type="file" id="profile_picture" name="profile_picture" accept="image/*"
+                      class="custom-file-input w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <p class="text-xs text-gray-500 mt-1">Max size: 2MB. Formats: JPG, PNG, GIF</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Account Type -->
+              <div class="col-span-2">
+                <label for="account_type" class="block text-sm font-medium text-gray-700 mb-1">Account Type <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                  <div class="relative">
+                    <input type="radio" id="account_basic" name="account_type" value="basic" class="sr-only peer" checked>
+                    <label for="account_basic" class="flex flex-col p-4 bg-white border rounded-lg cursor-pointer focus:outline-none hover:bg-gray-50 peer-checked:ring-2 peer-checked:ring-indigo-500 peer-checked:border-transparent">
+                      <span class="text-sm font-medium text-gray-900">Basic</span>
+                      <span class="text-xs text-gray-500">5 gyms</span>
+                      <span class="mt-1 text-lg font-semibold text-gray-900">Free</span>
+                    </label>
+                  </div>
+                  
+                  <div class="relative">
+                    <input type="radio" id="account_premium" name="account_type" value="premium" class="sr-only peer">
+                    <label for="account_premium" class="flex flex-col p-4 bg-white border rounded-lg cursor-pointer focus:outline-none hover:bg-gray-50 peer-checked:ring-2 peer-checked:ring-indigo-500 peer-checked:border-transparent">
+                      <span class="text-sm font-medium text-gray-900">Premium</span>
+                      <span class="text-xs text-gray-500">10 gyms</span>
+                      <span class="mt-1 text-lg font-semibold text-gray-900">₹999<span class="text-sm font-normal">/month</span></span>
+                    </label>
+                  </div>
+                  
+                  <div class="relative">
+                    <input type="radio" id="account_business" name="account_type" value="business" class="sr-only peer">
+                    <label for="account_business" class="flex flex-col p-4 bg-white border rounded-lg cursor-pointer focus:outline-none hover:bg-gray-50 peer-checked:ring-2 peer-checked:ring-indigo-500 peer-checked:border-transparent">
+                      <span class="text-sm font-medium text-gray-900">Business</span>
+                      <span class="text-xs text-gray-500">15 gyms</span>
+                      <span class="mt-1 text-lg font-semibold text-gray-900">₹1999<span class="text-sm font-normal">/month</span></span>
+                    </label>
+                  </div>
+                  
+                  <div class="relative">
+                    <input type="radio" id="account_unlimited" name="account_type" value="unlimited" class="sr-only peer">
+                    <label for="account_unlimited" class="flex flex-col p-4 bg-white border rounded-lg cursor-pointer focus:outline-none hover:bg-gray-50 peer-checked:ring-2 peer-checked:ring-indigo-500 peer-checked:border-transparent">
+                      <span class="text-sm font-medium text-gray-900">Unlimited</span>
+                      <span class="text-xs text-gray-500">No limit</span>
+                      <span class="mt-1 text-lg font-semibold text-gray-900">₹4999<span class="text-sm font-normal">/month</span></span>
+                    </label>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Choose the account type that best fits your needs. You can upgrade later.</p>
+              </div>
+
+              <!-- Terms and Conditions -->
+              <div class="col-span-2">
+                <div class="flex items-start">
+                  <div class="flex items-center h-5">
+                    <input id="terms" name="terms" type="checkbox" required
+                      class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                  </div>
+                  <div class="ml-3 text-sm">
+                    <label for="terms" class="font-medium text-gray-700">I agree to the <a href="#" class="text-indigo-600 hover:text-indigo-500 underline">Terms and Conditions</a> and <a href="#" class="text-indigo-600 hover:text-indigo-500 underline">Privacy Policy</a></label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div>
+              <button type="submit"
+                class="w-full bg-gradient-to-r from-indigo-600 to-blue-500 text-white py-3 px-4 rounded-lg shadow-md hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 flex items-center justify-center">
+                <span>Register as Gym Owner</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </form>
+          
+          <!-- Mobile login link (visible only on mobile) -->
+          <div class="mt-6 text-center lg:hidden">
+            <p class="text-sm text-gray-600">Already have an account? <a href="../login.php" class="text-indigo-600 font-medium">Login</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="mt-8 text-center text-sm text-gray-500">
+      <p>&copy; 2023 ProFitMart. All rights reserved.</p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const passwordInput = document.getElementById('password');
+      const passwordToggle = document.getElementById('password-toggle');
+      const lengthCheck = document.getElementById('length-check');
+      const uppercaseCheck = document.getElementById('uppercase-check');
+      const lowercaseCheck = document.getElementById('lowercase-check');
+      const numberCheck = document.getElementById('number-check');
+      const specialCheck = document.getElementById('special-check');
+      const form = document.getElementById('registration-form');
+      const errorMessage = document.getElementById('error-message');
+      const errorText = document.getElementById('error-text');
+      const profilePreview = document.getElementById('profile-preview');
+
+      // Toggle password visibility
+      passwordToggle.addEventListener('click', function() {
+        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordInput.setAttribute('type', type);
+        passwordToggle.innerHTML = type === 'password' ? '<i class="far fa-eye"></i>' : '<i class="far fa-eye-slash"></i>';
+      });
+
+      // Password validation
+      passwordInput.addEventListener('input', function() {
+        const password = passwordInput.value;
+        
+        // Check length
+        if (password.length >= 8) {
+          lengthCheck.innerHTML = '<i class="fas fa-check valid-requirement"></i> 8+ characters';
+          lengthCheck.classList.add('valid-requirement');
+          lengthCheck.classList.remove('invalid-requirement');
+        } else {
+          lengthCheck.innerHTML = '<i class="fas fa-times invalid-requirement"></i> 8+ characters';
+          lengthCheck.classList.add('invalid-requirement');
+          lengthCheck.classList.remove('valid-requirement');
+        }
+        
+        // Check uppercase
+        if (/[A-Z]/.test(password)) {
+          uppercaseCheck.innerHTML = '<i class="fas fa-check valid-requirement"></i> Uppercase letter';
+          uppercaseCheck.classList.add('valid-requirement');
+          uppercaseCheck.classList.remove('invalid-requirement');
+        } else {
+          uppercaseCheck.innerHTML = '<i class="fas fa-times invalid-requirement"></i> Uppercase letter';
+          uppercaseCheck.classList.add('invalid-requirement');
+          uppercaseCheck.classList.remove('valid-requirement');
+        }
+        
+        // Check lowercase
+        if (/[a-z]/.test(password)) {
+          lowercaseCheck.innerHTML = '<i class="fas fa-check valid-requirement"></i> Lowercase letter';
+          lowercaseCheck.classList.add('valid-requirement');
+          lowercaseCheck.classList.remove('invalid-requirement');
+        } else {
+          lowercaseCheck.innerHTML = '<i class="fas fa-times invalid-requirement"></i> Lowercase letter';
+          lowercaseCheck.classList.add('invalid-requirement');
+          lowercaseCheck.classList.remove('valid-requirement');
+        }
+        
+        // Check number
+        if (/[0-9]/.test(password)) {
+          numberCheck.innerHTML = '<i class="fas fa-check valid-requirement"></i> Number';
+          numberCheck.classList.add('valid-requirement');
+          numberCheck.classList.remove('invalid-requirement');
+        } else {
+          numberCheck.innerHTML = '<i class="fas fa-times invalid-requirement"></i> Number';
+          numberCheck.classList.add('invalid-requirement');
+          numberCheck.classList.remove('valid-requirement');
+        }
+        
+        // Check special character
+        if (/[^A-Za-z0-9]/.test(password)) {
+          specialCheck.innerHTML = '<i class="fas fa-check valid-requirement"></i> Special character';
+          specialCheck.classList.add('valid-requirement');
+          specialCheck.classList.remove('invalid-requirement');
+        } else {
+          specialCheck.innerHTML = '<i class="fas fa-times invalid-requirement"></i> Special character';
+          specialCheck.classList.add('invalid-requirement');
+          specialCheck.classList.remove('valid-requirement');
+        }
+      });
+
+      // Preview profile picture before upload
+      const profilePictureInput = document.getElementById('profile_picture');
+      profilePictureInput.addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (file) {
+          // Check file type
+          const fileType = file.type;
+          const validImageTypes = ['image/jpeg', 'image/png', 'image/gif'];
+          
+          if (!validImageTypes.includes(fileType)) {
+            showError("Please select a valid image file (JPG, PNG, or GIF).");
+            profilePictureInput.value = ''; // Clear the input
+            return;
+          }
+          
+          // Check file size (max 2MB)
+          if (file.size > 2 * 1024 * 1024) {
+            showError("Profile picture must be less than 2MB.");
+            profilePictureInput.value = ''; // Clear the input
+            return;
+          }
+          
+          // Preview the image
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            profilePreview.innerHTML = `<img src="${e.target.result}" class="h-full w-full object-cover" alt="Profile Preview">`;
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      // Form submission validation
+      form.addEventListener('submit', function(event) {
+        // Prevent default form submission
+        event.preventDefault();
+        
+        // Get form values
+        const password = passwordInput.value;
+        const email = document.getElementById('email').value;
+        const phone = document.getElementById('phone').value;
+        const profilePicture = document.getElementById('profile_picture').files[0];
+        
+        // Validate password meets all requirements
+        const isValidPassword = 
+          password.length >= 8 && 
+          /[A-Z]/.test(password) && 
+          /[a-z]/.test(password) && 
+          /[0-9]/.test(password) && 
+          /[^A-Za-z0-9]/.test(password);
+        
+        // Validate email format
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        
+        // Validate phone number (10 digits)
+        const isValidPhone = /^[0-9]{10}$/.test(phone);
+        
+        // Check file size if a profile picture was uploaded
+        let isValidFileSize = true;
+        if (profilePicture) {
+          isValidFileSize = profilePicture.size <= 2 * 1024 * 1024; // 2MB limit
+        }
+        
+        // Display error message if validation fails
+        if (!isValidPassword) {
+          showError("Password does not meet all requirements.");
+          return;
+        }
+        
+        if (!isValidEmail) {
+          showError("Please enter a valid email address.");
+          return;
+        }
+        
+        if (!isValidPhone) {
+          showError("Please enter a valid 10-digit phone number.");
+          return;
+        }
+        
+        if (!isValidFileSize) {
+          showError("Profile picture must be less than 2MB.");
+          return;
+        }
+        
+        // If all validations pass, submit the form
+        form.submit();
+      });
+      
+      // Function to show error message
+      function showError(message) {
+        errorText.textContent = message;
+        errorMessage.classList.remove('hidden');
+        
+        // Scroll to error message
+        errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Hide error after 5 seconds
+        setTimeout(function() {
+          errorMessage.classList.add('hidden');
+        }, 5000);
+      }
+      
+      // Add input validation for other fields
+      const nameInput = document.getElementById('name');
+      const emailInput = document.getElementById('email');
+      const phoneInput = document.getElementById('phone');
+      const addressInput = document.getElementById('address');
+      const cityInput = document.getElementById('city');
+      const stateInput = document.getElementById('state');
+      const countryInput = document.getElementById('country');
+      const zipCodeInput = document.getElementById('zip_code');
+      
+      // Real-time validation for email
+      emailInput.addEventListener('blur', function() {
+        const email = emailInput.value.trim();
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          emailInput.classList.add('border-red-500');
+          emailInput.classList.remove('border-gray-300');
+          
+          // Add error message below the input
+          let errorElement = emailInput.nextElementSibling;
+          if (!errorElement || !errorElement.classList.contains('email-error')) {
+            errorElement = document.createElement('p');
+            errorElement.classList.add('email-error', 'text-xs', 'text-red-500', 'mt-1');
+            emailInput.parentNode.insertBefore(errorElement, emailInput.nextSibling);
+          }
+          errorElement.textContent = 'Please enter a valid email address';
+        } else {
+          emailInput.classList.remove('border-red-500');
+          emailInput.classList.add('border-gray-300');
+          
+          // Remove error message if it exists
+          const errorElement = emailInput.nextElementSibling;
+          if (errorElement && errorElement.classList.contains('email-error')) {
+            errorElement.remove();
+          }
+        }
+      });
+      
+      // Real-time validation for phone
+      phoneInput.addEventListener('input', function() {
+        // Remove any non-numeric characters
+        this.value = this.value.replace(/\D/g, '');
+        
+        // Limit to 10 digits
+        if (this.value.length > 10) {
+          this.value = this.value.slice(0, 10);
+        }
+      });
+      
+      phoneInput.addEventListener('blur', function() {
+        const phone = phoneInput.value.trim();
+        if (phone && phone.length !== 10) {
+          phoneInput.classList.add('border-red-500');
+          phoneInput.classList.remove('border-gray-300');
+          
+          // Add error message below the input
+          let errorElement = phoneInput.nextElementSibling;
+          if (!errorElement || !errorElement.classList.contains('phone-error')) {
+            errorElement = document.createElement('p');
+            errorElement.classList.add('phone-error', 'text-xs', 'text-red-500', 'mt-1');
+            phoneInput.parentNode.insertBefore(errorElement, phoneInput.nextSibling);
+          }
+          errorElement.textContent = 'Phone number must be exactly 10 digits';
+        } else {
+          phoneInput.classList.remove('border-red-500');
+          phoneInput.classList.add('border-gray-300');
+          
+          // Remove error message if it exists
+          const errorElement = phoneInput.nextElementSibling;
+          if (errorElement && errorElement.classList.contains('phone-error')) {
+            errorElement.remove();
+          }
+        }
+      });
+      
+      // Zip code validation (allow only alphanumeric characters)
+      zipCodeInput.addEventListener('input', function() {
+        // Remove special characters except alphanumeric
+        this.value = this.value.replace(/[^a-zA-Z0-9]/g, '');
+      });
+      
+      // Add floating labels effect
+      const formInputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="password"]');
+      formInputs.forEach(input => {
+        // Add focus effect
+        input.addEventListener('focus', function() {
+          this.parentElement.classList.add('focused');
+        });
+        
+        // Remove focus effect if input is empty
+        input.addEventListener('blur', function() {
+          if (!this.value) {
+            this.parentElement.classList.remove('focused');
+          }
+        });
+        
+        // Check if input already has value on page load
+        if (input.value) {
+          input.parentElement.classList.add('focused');
+        }
+      });
+      
+      // Add responsive behavior for account type selection
+      const accountTypeRadios = document.querySelectorAll('input[name="account_type"]');
+      const accountTypeLabels = document.querySelectorAll('label[for^="account_"]');
+      
+      // Highlight selected account type
+      accountTypeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+          accountTypeLabels.forEach(label => {
+            label.classList.remove('bg-indigo-50', 'border-indigo-200');
+          });
+          
+          const selectedLabel = document.querySelector(`label[for="${this.id}"]`);
+          selectedLabel.classList.add('bg-indigo-50', 'border-indigo-200');
+        });
+      });
+      
+      // Set initial selected state for Basic plan
+      document.querySelector('label[for="account_basic"]').classList.add('bg-indigo-50', 'border-indigo-200');
+      
+      // Add smooth scrolling for error messages
+      function scrollToElement(element) {
+        window.scrollTo({
+          behavior: 'smooth',
+          top: element.getBoundingClientRect().top + window.pageYOffset - 100
+        });
+      }
+    });
+  </script>
+</body>
+</html>

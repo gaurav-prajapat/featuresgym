@@ -1,0 +1,115 @@
+[27-Mar-2025 21:53:30 Europe/Berlin] Form submitted. POST data: Array
+(
+    [plan_id] => 105
+    [membership_plan] => Array
+        (
+            [plan_name] => Demetria Petersen
+            [tier] => Premium
+            [duration] => Monthly
+            [price] => 2100.00
+            [best_for] => In velit duis dolor
+            [inclusions] => Omnis fugiat esse f
+        )
+
+    [save_tab] => membership_plans
+    [action] => update_plan
+)
+
+[27-Mar-2025 21:53:30 Europe/Berlin] Processing tab: membership_plans
+[27-Mar-2025 21:53:30 Europe/Berlin] Form data: Array
+(
+    [plan_id] => 105
+    [membership_plan] => Array
+        (
+            [plan_name] => Demetria Petersen
+            [tier] => Premium
+            [duration] => Monthly
+            [price] => 2100.00
+            [best_for] => In velit duis dolor
+            [inclusions] => Omnis fugiat esse f
+        )
+
+    [save_tab] => membership_plans
+    [action] => update_plan
+)
+
+[27-Mar-2025 21:53:30 Europe/Berlin] Started transaction for tab: membership_plans
+[27-Mar-2025 21:53:30 Europe/Berlin] Transaction committed successfully for tab: membership_plans
+[27-Mar-2025 21:54:13 Europe/Berlin] Form submitted. POST data: Array
+(
+    [new_equipment] => Array
+        (
+            [0] => Array
+                (
+                    [name] => treadmill
+                    [category] => Functional Training
+                    [quantity] => 3
+                    [description] => tha
+                )
+
+        )
+
+    [save_tab] => equipment
+)
+
+[27-Mar-2025 21:54:13 Europe/Berlin] Processing tab: equipment
+[27-Mar-2025 21:54:13 Europe/Berlin] Form data: Array
+(
+    [new_equipment] => Array
+        (
+            [0] => Array
+                (
+                    [name] => treadmill
+                    [category] => Functional Training
+                    [quantity] => 3
+                    [description] => tha
+                )
+
+        )
+
+    [save_tab] => equipment
+)
+
+[27-Mar-2025 21:54:13 Europe/Berlin] Started transaction for tab: equipment
+[27-Mar-2025 21:54:13 Europe/Berlin] Transaction committed successfully for tab: equipment
+[30-Mar-2025 15:01:04 Asia/Kolkata] Form submitted. POST data: Array
+(
+    [gym_name] => Lyle Lawson
+    [address] => Eveniet eum asperna
+    [city] => Ut ratione aut odio
+    [state] => Quibusdam atque ab a
+    [zip_code] => 86296
+    [phone] => +1 (424) 191-6333
+    [email] => waququseje@mailinator.com
+    [capacity] => 5
+    [gym_cut_percentage] => 80
+    [description] => Qui voluptatem itaqu
+    [additional_notes] => Reiciendis nobis exp
+    [is_featured] => 1
+    [save_tab] => basic_info
+)
+
+[30-Mar-2025 15:01:04 Asia/Kolkata] Processing tab: basic_info
+[30-Mar-2025 15:01:04 Asia/Kolkata] Form data: Array
+(
+    [gym_name] => Lyle Lawson
+    [address] => Eveniet eum asperna
+    [city] => Ut ratione aut odio
+    [state] => Quibusdam atque ab a
+    [zip_code] => 86296
+    [phone] => +1 (424) 191-6333
+    [email] => waququseje@mailinator.com
+    [capacity] => 5
+    [gym_cut_percentage] => 80
+    [description] => Qui voluptatem itaqu
+    [additional_notes] => Reiciendis nobis exp
+    [is_featured] => 1
+    [save_tab] => basic_info
+)
+
+[30-Mar-2025 15:01:04 Asia/Kolkata] Started transaction for tab: basic_info
+[30-Mar-2025 15:01:04 Asia/Kolkata] Processing basic_info tab
+[30-Mar-2025 15:01:04 Asia/Kolkata] Updating gym with name: Lyle Lawson, address: Eveniet eum asperna
+[30-Mar-2025 15:01:04 Asia/Kolkata] Basic info update result: success
+[30-Mar-2025 15:01:04 Asia/Kolkata] Rows affected by update: 0
+[30-Mar-2025 15:01:04 Asia/Kolkata] Transaction committed successfully for tab: basic_info

@@ -1,0 +1,76 @@
+:root {
+    /* Default theme variables (dark theme) */
+    --bg-primary: #111827;
+    --bg-secondary: #1F2937;
+    --bg-tertiary: #374151;
+    --text-primary: #F9FAFB;
+    --text-secondary: #D1D5DB;
+    --text-muted: #9CA3AF;
+    --accent: #FBBF24;
+    --accent-hover: #F59E0B;
+    --success: #10B981;
+    --success-hover: #059669;
+    --danger: #EF4444;
+    --danger-hover: #DC2626;
+    --info: #3B82F6;
+    --info-hover: #2563EB;
+    --warning: #F59E0B;
+    --warning-hover: #D97706;
+    --indigo: #8B5CF6;
+    --border-color: #4B5563;
+    --card-bg: #1F2937;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    
+    /* Animation durations */
+    --transition-speed: 0.3s;
+}
+
+/* Light theme variables */
+.light-theme {
+    --bg-primary: #F9FAFB;
+    --bg-secondary: #FFFFFF;
+    --bg-tertiary: #F3F4F6;
+    --text-primary: #111827;
+    --text-secondary: #374151;
+    --text-muted: #6B7280;
+    --accent: #F59E0B;
+    --accent-hover: #D97706;
+    --border-color: #E5E7EB;
+    --card-bg: #FFFFFF;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Apply transition to all elements for smooth theme switching */
+.theme-transition,
+.theme-transition * {
+    transition: background-color var(--transition-speed) ease,
+                color var(--transition-speed) ease,
+                border-color var(--transition-speed) ease,
+                box-shadow var(--transition-speed) ease;
+}
+
+/* Theme toggle button styles */
+.theme-toggle {
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    transition: all var(--transition-speed) ease;
+}
+
+.theme-toggle:hover {
+    background-color: var(--accent);
+    color: var(--bg-primary);
+}
+
+/* Preview variables for theme editor */
+:root {
+    --preview-primary: var(--bg-primary);
+    --preview-secondary: var(--bg-secondary);
+    --preview-accent: var(--accent);
+    --preview-text: var(--text-primary);
+}
