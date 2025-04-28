@@ -165,16 +165,10 @@ function formatTime($time)
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
 
-<head>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Member Details | Gym Management</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
+   
         .tab-content {
             display: none;
         }
@@ -209,13 +203,7 @@ function formatTime($time)
             }
         }
     </style>
-</head>
 
-<body class="bg-gray-100">
-    <!-- Loading Overlay -->
-    <!-- <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="custom-loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-24 w-24"></div>
-    </div> -->
 
     <div class="container mx-auto px-4 py-20">
         <?php if ($error): ?>

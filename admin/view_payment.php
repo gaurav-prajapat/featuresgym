@@ -3,7 +3,7 @@ ob_start();
 include '../includes/navbar.php';
 
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -198,7 +198,7 @@ if (isset($_POST['update_status'])) {
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 no-print">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Payment Details</h1>
+                <h1 class="text-3xl font-bold ">Payment Details</h1>
                 <p class="text-gray-600">View detailed information about this payment</p>
             </div>
             <div class="mt-4 md:mt-0 flex space-x-3">

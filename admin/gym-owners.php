@@ -729,6 +729,6 @@ if (cancelStatus) {
     }
 </style>
 
-<?php include('../includes/footer.php'); ?>
+
 
 

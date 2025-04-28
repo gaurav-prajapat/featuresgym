@@ -411,7 +411,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="container mx-auto px-4 py-8 pt-24">
         <!-- Header Section -->
         <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">Tournaments & Competitions</h1>
+            <h1 class="text-3xl font-bold ">Tournaments & Competitions</h1>
             <a href="tournaments.php" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
                 <i class="fas fa-arrow-left mr-2"></i> Back to Dashboard
             </a>

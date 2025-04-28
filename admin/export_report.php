@@ -3,8 +3,8 @@ require_once '../config/database.php';
 session_start();
 
 // Check if user is logged in as admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: /profitmarts/FlexFit/views/auth/login.php');
+if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
+    header('Location: ./login.php');
     exit();
 }
 

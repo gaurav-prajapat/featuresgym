@@ -120,7 +120,7 @@ $stats = $statsStmt->fetch(PDO::FETCH_ASSOC);
 ?>
 <div class="min-h-screen bg-gradient-to-b from-gray-900 to-black py-12 sm:py-16 lg:py-20">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 class="text-3xl font-bold text-white mb-8 text-center">Payment History</h1>
+        <h1 class="text-3xl font-bold text-white mb-8 text-center lg:mt-0 sm:mt-5 mt-8">Payment History</h1>
 
         <!-- Payment Statistics -->
         <div class="bg-gray-800 bg-opacity-50 backdrop-blur-lg rounded-3xl p-6 mb-8">

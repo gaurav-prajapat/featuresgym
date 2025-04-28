@@ -4,8 +4,8 @@ require_once '../config/database.php';
 session_start();
 
 // Check if user is logged in as admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: /profitmarts/FlexFit/views/auth/login.php');
+if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
+    header('Location: ./login.php');
     exit();
 }
 
@@ -338,7 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (userId && gymId) {
                 membershipStatus.innerHTML = '<p class="text-gray-400">Loading membership information...</p>';
                 
-                fetch(`/profitmarts/FlexFit/admin/api/check_membership.php?user_id=${userId}&gym_id=${gymId}`)
+                fetch(`/admin/api/check_membership.php?user_id=${userId}&gym_id=${gymId}`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.has_membership) {
@@ -395,7 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (gymId) {
                 operatingHours.innerHTML = '<p class="text-gray-400">Loading operating hours...</p>';
                 
-                fetch(`/profitmarts/FlexFit/admin/api/get_operating_hours.php?gym_id=${gymId}`)
+                fetch(`/admin/api/get_operating_hours.php?gym_id=${gymId}`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {

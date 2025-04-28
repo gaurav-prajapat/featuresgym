@@ -66,11 +66,3 @@
     background-color: var(--accent);
     color: var(--bg-primary);
 }
-
-/* Preview variables for theme editor */
-:root {
-    --preview-primary: var(--bg-primary);
-    --preview-secondary: var(--bg-secondary);
-    --preview-accent: var(--accent);
-    --preview-text: var(--text-primary);
-}

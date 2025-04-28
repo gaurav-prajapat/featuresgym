@@ -224,6 +224,75 @@ try {
         $conn->rollBack();
         $response['message'] = 'Failed to create membership record';
     }
+    // Add this after the successful membership creation, just before the final response
+// Around line 172, after the activity log is inserted and before the commit
+
+// Send confirmation email to the user
+try {
+    // First, get the user's email
+    $userStmt = $conn->prepare("SELECT email, username FROM users WHERE id = ?");
+    $userStmt->execute([$_SESSION['user_id']]);
+    $userData = $userStmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Get gym name
+    $gymStmt = $conn->prepare("SELECT name FROM gyms WHERE gym_id = ?");
+    $gymStmt->execute([$gym_id]);
+    $gymName = $gymStmt->fetchColumn();
+    
+    // Include the email service
+    require_once 'includes/EmailService.php';
+    $emailService = new EmailService();
+    
+    // Prepare email content
+    $subject = "Membership Confirmation - " . htmlspecialchars($gymName);
+    
+    $body = "<h2>Your Membership is Purchase Successful!</h2>";
+    $body .= "<p>Hello " . htmlspecialchars($userData['username']) . ",</p>";
+    $body .= "<p>Thank you for purchasing a membership at <strong>" . htmlspecialchars($gymName) . "</strong>.</p>";
+    $body .= "<p><strong>Membership Details:</strong></p>";
+    $body .= "<ul>";
+    $body .= "<li>Plan: " . htmlspecialchars($plan['name'] ?? 'Standard Plan') . "</li>";
+    $body .= "<li>Start Date: " . htmlspecialchars($start_date) . "</li>";
+    $body .= "<li>End Date: " . htmlspecialchars($end_date) . "</li>";
+    $body .= "<li>Amount Paid: ₹" . number_format($payment['amount'], 2) . "</li>";
+    $body .= "<li>Balance Added: ₹" . number_format($balance_to_add, 2) . "</li>";
+    $body .= "</ul>";
+    $body .= "<p>You can view your membership details and schedule your workouts by logging into your account.</p>";
+    $body .= "<p>Thank you for choosing us!</p>";
+    
+    // Send the email
+    $emailService->sendEmail($userData['email'], $subject, $body);
+    
+    // Log the email sending
+    $emailLogStmt = $conn->prepare("
+        INSERT INTO activity_logs (
+            user_id, user_type, action, details, ip_address
+        ) VALUES (
+            :user_id, 'member', 'email_sent', :details, :ip_address
+        )
+    ");
+    
+    $emailLogDetails = json_encode([
+        'type' => 'membership_confirmation',
+        'membership_id' => $membership_id,
+        'email' => $userData['email']
+    ]);
+    
+    $emailLogStmt->bindParam(':user_id', $_SESSION['user_id'], PDO::PARAM_INT);
+    $emailLogStmt->bindParam(':details', $emailLogDetails, PDO::PARAM_STR);
+    $emailLogStmt->bindParam(':ip_address', $ip_address, PDO::PARAM_STR);
+    $emailLogStmt->execute();
+    
+    // Add email sent confirmation to the response
+    $response['email_sent'] = true;
+    
+} catch (Exception $emailError) {
+    // Log the error but don't fail the transaction
+    error_log('Error sending membership confirmation email: ' . $emailError->getMessage());
+    $response['email_sent'] = false;
+    $response['email_error'] = 'Could not send confirmation email';
+}
+
 } catch (PDOException $e) {
     if (isset($conn)) {
         $conn->rollBack();

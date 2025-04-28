@@ -4,8 +4,8 @@ require_once '../config/database.php';
 session_start();
 
 // Check if user is logged in as admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: /profitmarts/FlexFit/views/auth/login.php');
+if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
+    header('Location: ./login.php');
     exit();
 }
 
@@ -353,6 +353,9 @@ function formatDateTime($datetime) {
     <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-2xl font-bold">Manage Payouts</h1>
+            <a href="payout_settings.php" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
+        <i class="fas fa-cog mr-2"></i> Auto-Payout Settings
+    </a>
         </div>
         
         <?php if (isset($_SESSION['success'])): ?>

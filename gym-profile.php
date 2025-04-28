@@ -103,6 +103,68 @@ $hoursStmt = $conn->prepare($hoursSql);
 $hoursStmt->execute([$gymId]);
 $operatingHours = $hoursStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Add default days if any are missing (to ensure all days are represented)
+$allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+$existingDays = array_column($operatingHours, 'day');
+
+// If there's a "Daily" schedule, it applies to all days unless overridden
+$dailySchedule = null;
+foreach ($operatingHours as $hours) {
+    if ($hours['day'] === 'Daily') {
+        $dailySchedule = $hours;
+        break;
+    }
+}
+
+// Add missing days with closed status or daily schedule
+foreach ($allDays as $day) {
+    if (!in_array($day, $existingDays) && $day !== 'Daily') {
+        if ($dailySchedule) {
+            // Use daily schedule for this day
+            $dailySchedule['day'] = $day;
+            $operatingHours[] = $dailySchedule;
+        } else {
+            // Add as closed - using empty or '00:00:00' time values to indicate closed
+            $operatingHours[] = [
+                'day' => $day,
+                'morning_open_time' => '00:00:00',
+                'morning_close_time' => '00:00:00',
+                'evening_open_time' => '00:00:00',
+                'evening_close_time' => '00:00:00'
+            ];
+        }
+    }
+}
+
+// Sort the hours again after adding missing days
+usort($operatingHours, function ($a, $b) use ($allDays) {
+    // Daily always comes first
+    if ($a['day'] === 'Daily')
+        return -1;
+    if ($b['day'] === 'Daily')
+        return 1;
+
+    // Otherwise sort by day of week
+    return array_search($a['day'], $allDays) - array_search($b['day'], $allDays);
+});
+
+// Process each day to determine if it's closed
+foreach ($operatingHours as &$hours) {
+    // Check if times are empty/null or all zeros which would indicate closed
+    $morningClosed = empty($hours['morning_open_time']) ||
+        empty($hours['morning_close_time']) ||
+        $hours['morning_open_time'] === '00:00:00' ||
+        $hours['morning_close_time'] === '00:00:00';
+
+    $eveningClosed = empty($hours['evening_open_time']) ||
+        empty($hours['evening_close_time']) ||
+        $hours['evening_open_time'] === '00:00:00' ||
+        $hours['evening_close_time'] === '00:00:00';
+
+    $hours['is_closed'] = $morningClosed && $eveningClosed;
+}
+unset($hours); // Break the reference
+
 // Fetch equipment
 $equipmentSql = "
     SELECT * 
@@ -322,71 +384,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
         }
 
         /* Add these styles to your existing styles */
-.toast-notification {
-    max-width: 90vw;
-    width: 350px;
-}
+        .toast-notification {
+            max-width: 90vw;
+            width: 350px;
+        }
 
-.time-slot-item.selected {
-    transform: scale(1.05);
-    box-shadow: 0 0 0 2px #F59E0B;
-}
+        .time-slot-item.selected {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 2px #F59E0B;
+        }
 
-.time-slot-item:not([data-full="1"]):hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
+        .time-slot-item:not([data-full="1"]):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
 
-.time-slot-item:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5);
-}
+        .time-slot-item:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5);
+        }
 
-#selected-time-display {
-    animation: fadeIn 0.3s ease-in-out;
-}
+        #selected-time-display {
+            animation: fadeIn 0.3s ease-in-out;
+        }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
 
-.animate-pulse {
-    animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) 1;
-}
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
 
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.7;
-    }
-}
+        .animate-pulse {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) 1;
+        }
 
-/* Improved scrolling experience */
-#time-slot-container {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(245, 158, 11, 0.5) rgba(31, 41, 55, 0.5);
-}
+        @keyframes pulse {
 
-#time-slot-container::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
+            0%,
+            100% {
+                opacity: 1;
+            }
 
-#time-slot-container::-webkit-scrollbar-track {
-    background: rgba(31, 41, 55, 0.5);
-    border-radius: 4px;
-}
+            50% {
+                opacity: 0.7;
+            }
+        }
 
-#time-slot-container::-webkit-scrollbar-thumb {
-    background-color: rgba(245, 158, 11, 0.5);
-    border-radius: 4px;
-}
-#time-slot-container::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(245, 158, 11, 0.8);
-}
+        /* Improved scrolling experience */
+        #time-slot-container {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(245, 158, 11, 0.5) rgba(31, 41, 55, 0.5);
+        }
+
+        #time-slot-container::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        #time-slot-container::-webkit-scrollbar-track {
+            background: rgba(31, 41, 55, 0.5);
+            border-radius: 4px;
+        }
+
+        #time-slot-container::-webkit-scrollbar-thumb {
+            background-color: rgba(245, 158, 11, 0.5);
+            border-radius: 4px;
+        }
+
+        #time-slot-container::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(245, 158, 11, 0.8);
+        }
     </style>
 </head>
 
@@ -406,7 +479,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
                     <div class="flex flex-col md:flex-row md:items-end justify-between">
                         <div>
                             <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2">
-                                <?php echo htmlspecialchars($gym['name']); ?></h1>
+                                <?php echo htmlspecialchars($gym['name']); ?>
+                            </h1>
                             <div class="flex items-center mb-2">
                                 <div class="flex items-center mr-4">
                                     <?php
@@ -588,7 +662,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
                                             <?php
                                             $today = date('l');
                                             foreach ($operatingHours as $hours):
+                                                // Skip "Daily" in the display if we have specific days
+                                                if ($hours['day'] === 'Daily' && count($operatingHours) > 1 && count(array_diff(array_column($operatingHours, 'day'), ['Daily'])) >= 7) {
+                                                    continue;
+                                                }
+
                                                 $isToday = $hours['day'] === $today;
+                                                $isClosed = $hours['is_closed'] ?? false;
+
+                                                // Also check if times are empty/null which would indicate closed
+                                                $morningClosed = empty($hours['morning_open_time']) ||
+                                                    empty($hours['morning_close_time']) ||
+                                                    $hours['morning_open_time'] === '00:00:00' ||
+                                                    $hours['morning_close_time'] === '00:00:00';
+
+                                                $eveningClosed = empty($hours['evening_open_time']) ||
+                                                    empty($hours['evening_close_time']) ||
+                                                    $hours['evening_open_time'] === '00:00:00' ||
+                                                    $hours['evening_close_time'] === '00:00:00';
+
+                                                $fullyClosed = $morningClosed && $eveningClosed;
+
+                                                // Combine the checks
+                                                $showAsClosed = $isClosed || $fullyClosed;
                                                 ?>
                                                 <tr class="<?php echo $isToday ? 'bg-yellow-900 bg-opacity-30' : ''; ?>">
                                                     <td class="py-3 px-4 text-sm text-gray-300 font-medium">
@@ -599,21 +695,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
                                                         <?php endif; ?>
                                                     </td>
                                                     <td class="py-3 px-4 text-sm text-gray-300">
-                                                        <?php
-                                                        $morningOpen = date('g:i A', strtotime($hours['morning_open_time']));
-                                                        $morningClose = date('g:i A', strtotime($hours['morning_close_time']));
-                                                        echo "$morningOpen - $morningClose";
-                                                        ?>
+                                                        <?php if ($showAsClosed || $morningClosed): ?>
+                                                            <span class="text-red-400">Closed</span>
+                                                        <?php else: ?>
+                                                            <?php
+                                                            $morningOpen = date('g:i A', strtotime($hours['morning_open_time']));
+                                                            $morningClose = date('g:i A', strtotime($hours['morning_close_time']));
+                                                            echo "$morningOpen - $morningClose";
+                                                            ?>
+                                                        <?php endif; ?>
                                                     </td>
                                                     <td class="py-3 px-4 text-sm text-gray-300">
-                                                        <?php
-                                                        $eveningOpen = date('g:i A', strtotime($hours['evening_open_time']));
-                                                        $eveningClose = date('g:i A', strtotime($hours['evening_close_time']));
-                                                        echo "$eveningOpen - $eveningClose";
-                                                        ?>
+                                                        <?php if ($showAsClosed || $eveningClosed): ?>
+                                                            <span class="text-red-400">Closed</span>
+                                                        <?php else: ?>
+                                                            <?php
+                                                            $eveningOpen = date('g:i A', strtotime($hours['evening_open_time']));
+                                                            $eveningClose = date('g:i A', strtotime($hours['evening_close_time']));
+                                                            echo "$eveningOpen - $eveningClose";
+                                                            ?>
+                                                        <?php endif; ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
+
                                         </tbody>
                                     </table>
                                 </div>
@@ -641,7 +746,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
                                     <?php foreach ($groupedEquipment as $category => $items): ?>
                                         <div>
                                             <h3 class="text-lg font-semibold text-yellow-500 mb-3">
-                                                <?php echo htmlspecialchars($category); ?></h3>
+                                                <?php echo htmlspecialchars($category); ?>
+                                            </h3>
                                             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                                 <?php foreach ($items as $item): ?>
                                                     <div class="bg-gray-700 rounded-lg p-3">
@@ -703,9 +809,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
                                                         </div>
                                                         <div>
                                                             <div class="font-medium text-white">
-                                                                <?php echo htmlspecialchars($review['user_name']); ?></div>
+                                                                <?php echo htmlspecialchars($review['user_name']); ?>
+                                                            </div>
                                                             <div class="text-xs text-gray-400">
-                                                                <?php echo date('M d, Y', strtotime($review['created_at'])); ?></div>
+                                                                <?php echo date('M d, Y', strtotime($review['created_at'])); ?>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div class="flex">
@@ -856,7 +964,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review']) && i
                                         ?>">
                                         <div class="flex justify-between items-start mb-2">
                                             <h3 class="text-lg font-semibold text-white">
-                                                <?php echo htmlspecialchars($plan['plan_name']); ?></h3>
+                                                <?php echo htmlspecialchars($plan['plan_name']); ?>
+                                            </h3>
                                             <div class="bg-yellow-500 text-black font-bold px-2 py-1 rounded-full text-sm">
                                                 ₹<?php echo number_format($plan['price'], 2); ?>
                                             </div>

@@ -3,23 +3,26 @@ require_once '../config/database.php';
 session_start();
 
 // Check if user is logged in as admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
+    header('Content-Type: application/json');
     echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit();
 }
 
-// Check if ID is provided
-if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+$db = new GymDatabase();
+$conn = $db->getConnection();
+
+// Get payout ID
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+if ($id <= 0) {
+    header('Content-Type: application/json');
     echo json_encode(['success' => false, 'message' => 'Invalid payout ID']);
     exit();
 }
 
-$payout_id = (int)$_GET['id'];
-$db = new GymDatabase();
-$conn = $db->getConnection();
-
 try {
-    // Get payout details
+    // Get withdrawal details
     $stmt = $conn->prepare("
         SELECT w.*, g.name as gym_name, g.city, g.state, 
                u.username as owner_name, u.email as owner_email,
@@ -32,15 +35,19 @@ try {
         LEFT JOIN users a ON w.admin_id = a.id
         WHERE w.id = ?
     ");
-    $stmt->execute([$payout_id]);
+    $stmt->execute([$id]);
     $payout = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($payout) {
-        echo json_encode(['success' => true, 'payout' => $payout]);
-    } else {
+    if (!$payout) {
+        header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => 'Payout not found']);
+        exit();
     }
+    
+    header('Content-Type: application/json');
+    echo json_encode(['success' => true, 'payout' => $payout]);
+    
 } catch (PDOException $e) {
+    header('Content-Type: application/json');
     echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
 }
-?>

@@ -1,9 +1,7 @@
 <?php
-// Check if admin is logged in
-include '../includes/navbar.php';
-
+session_start();
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -121,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 function generateFooterPreview($settings) {
     ob_start();
 ?>
+
 <footer class="bg-gradient-to-b <?php echo $settings['footer_bg_color']; ?> relative pt-20 pb-10">
     <div class="absolute inset-0 bg-pattern opacity-10"></div>
     
@@ -260,8 +259,10 @@ $textColorOptions = [
         }
     </style>
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8 pt-20">
+<body class="bg-gray-900">
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-2xl font-bold text-gray-800">Manage  Footer</h1>
             <a href="index.php" class="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition duration-300">

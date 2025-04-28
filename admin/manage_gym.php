@@ -862,6 +862,6 @@ $gym_status_counts = $status_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     }
 </style>
 
-<?php include('../includes/footer.php'); ?>
+
 
 

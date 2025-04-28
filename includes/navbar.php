@@ -8,8 +8,7 @@ if (!isset($_SESSION)) {
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/auth.php';
-// require_once '../includes/preload.php';
-
+require_once __DIR__ . '/../includes/settings.php';
 
 // Initialize auth if not already done
 if (!isset($auth)) {
@@ -18,32 +17,41 @@ if (!isset($auth)) {
     $auth = new Auth($conn);
 }
 
-// Check if user is authenticated
-if (
-    !$auth->isAuthenticated() && !in_array(basename($_SERVER['PHP_SELF']), [
-        'login.php',
-        'register.php',
-        'forgot-password.php',
-        'reset-password.php',
-        'index.php',
-        'terms.php',
-        'privacy.php',
-        'about-us.php',
-        'contact.php',
-        'all-gyms.php',
-        'gym-profile.php'
-    ])
-) {
-    $_SESSION['error'] = "Please log in to access this page.";
-    header('Location: ' . (strpos($_SERVER['PHP_SELF'], 'admin/') !== false ? '../login.php' :
-        (strpos($_SERVER['PHP_SELF'], 'gym/') !== false ? '../login.php' : 'login.php')));
-    exit;
-}
+// Load site settings
+$site_settings = getSiteSettings($conn);
 
-// For gym partner pages, check if user has gym_partner role
-if (strpos($_SERVER['PHP_SELF'], 'gym/') !== false && !isset($_SESSION['owner_id'])) {
-    $_SESSION['error'] = "You don't have permission to access the gym partner area.";
-    header('Location: ../login.php');
+// Check if user is authenticated
+$public_pages = [
+    'login.php',
+    'register.php',
+    'forgot-password.php',
+    'reset-password.php',
+    'index.php',
+    'terms.php',
+    'privacy.php',
+    'about-us.php',
+    'contact.php',
+    'all-gyms.php',
+    'gym-profile.php',
+    'faq.php',
+    'pricing.php',
+    'blog.php',
+    'blog-post.php',
+    'careers.php',
+    'testimonials.php'
+];
+
+if (!$auth->isAuthenticated() && !in_array(basename($_SERVER['PHP_SELF']), $public_pages)) {
+    $_SESSION['error'] = "Please log in to access this page.";
+    $redirect_url = 'login.php';
+    
+    if (strpos($_SERVER['PHP_SELF'], 'admin/') !== false) {
+        $redirect_url = './login.php';
+    } elseif (strpos($_SERVER['PHP_SELF'], 'gym/') !== false) {
+        $redirect_url = './login.php';
+    }
+    
+    header('Location: ' . $redirect_url);
     exit;
 }
 
@@ -62,50 +70,100 @@ if (isset($_SESSION['user_id'])) {
 $current_page = basename($_SERVER['PHP_SELF']);
 $current_dir = dirname($_SERVER['PHP_SELF']);
 $role = $_SESSION['role'] ?? '';
-$isLoggedIn = isset($_SESSION['user_id']) || isset($_SESSION['owner_id']);
-$user_id = $_SESSION['user_id'] ?? ($_SESSION['owner_id'] ?? null);
-$username = isset($_SESSION['username']) ? $_SESSION['username'] : (isset($_SESSION['owner_name']) ? $_SESSION['owner_name'] : '');
+$isLoggedIn = isset($_SESSION['user_id']) || isset($_SESSION['owner_id']) || isset($_SESSION['admin_id']);
+$user_id = $_SESSION['user_id'] ?? ($_SESSION['owner_id'] ?? ($_SESSION['admin_id'] ?? null));
+$username = isset($_SESSION['username']) ? $_SESSION['username'] : (isset($_SESSION['owner_name']) ? $_SESSION['owner_name'] : (isset($_SESSION['admin_name']) ? $_SESSION['admin_name'] : ''));
 $account_type = isset($_SESSION['account_type']) ? $_SESSION['account_type'] : (isset($_SESSION['owner_account_type']) ? $_SESSION['owner_account_type'] : 'basic');
-
 
 // Get unread notifications count based on role
 $unreadNotificationsCount = 0;
 if ($isLoggedIn) {
-    if ($role === 'member') {
-        $query = "SELECT COUNT(*) FROM notifications 
-                 WHERE user_id = ? 
-                 AND status = 'unread'";
-        $stmt = $conn->prepare($query);
-        $stmt->execute([$user_id]);
-
-    } elseif (isset($_SESSION['owner_id'])) {
-        $query = "SELECT COUNT(*) FROM notifications 
-                 WHERE gym_id IN (SELECT gym_id FROM gyms WHERE owner_id = ?) 
-                 AND is_read = 0";
-        $stmt = $conn->prepare($query);
-        $stmt->execute([$_SESSION['owner_id']]);
-    } else {
-        // Default query when no role matches
-        $query = "SELECT COUNT(*) FROM notifications WHERE 1=0";
-        $stmt = $conn->prepare($query);
-        $stmt->execute();
+    try {
+        // Check if the notifications table exists and get its structure
+        $checkTableStmt = $conn->prepare("SHOW TABLES LIKE 'notifications'");
+        $checkTableStmt->execute();
+        $tableExists = $checkTableStmt->rowCount() > 0;
+        
+        if ($tableExists) {
+            // Get column names to determine the correct structure
+            $columnsStmt = $conn->prepare("SHOW COLUMNS FROM notifications");
+            $columnsStmt->execute();
+            $columns = $columnsStmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            // Check for different possible column structures
+            $hasRecipientId = in_array('recipient_id', $columns);
+            $hasRecipientType = in_array('recipient_type', $columns);
+            $hasUserId = in_array('user_id', $columns);
+            $hasUserType = in_array('user_type', $columns);
+            $hasIsRead = in_array('is_read', $columns);
+            $hasStatus = in_array('status', $columns);
+            $hasGymId = in_array('gym_id', $columns);
+            
+            $userType = isset($_SESSION['user_id']) ? 'user' : (isset($_SESSION['owner_id']) ? 'owner' : 'admin');
+            
+            // Determine which query to use based on available columns
+            if ($hasRecipientId && $hasRecipientType && $hasIsRead) {
+                $notifQuery = "SELECT COUNT(*) FROM notifications WHERE recipient_id = ? AND recipient_type = ? AND is_read = 0";
+                $notifStmt = $conn->prepare($notifQuery);
+                $notifStmt->execute([$user_id, $userType]);
+            } elseif ($hasUserId && $hasUserType && $hasIsRead) {
+                $notifQuery = "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND user_type = ? AND is_read = 0";
+                $notifStmt = $conn->prepare($notifQuery);
+                $notifStmt->execute([$user_id, $userType]);
+            } elseif ($hasUserId && $hasStatus) {
+                $notifQuery = "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'";
+                $notifStmt = $conn->prepare($notifQuery);
+                $notifStmt->execute([$user_id]);
+            } elseif (isset($_SESSION['owner_id']) && $hasGymId && $hasIsRead) {
+                $notifQuery = "SELECT COUNT(*) FROM notifications WHERE gym_id IN (SELECT gym_id FROM gyms WHERE owner_id = ?) AND is_read = 0";
+                $notifStmt = $conn->prepare($notifQuery);
+                $notifStmt->execute([$_SESSION['owner_id']]);
+            } elseif ($hasUserId && $hasIsRead) {
+                $notifQuery = "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0";
+                $notifStmt = $conn->prepare($notifQuery);
+                $notifStmt->execute([$user_id]);
+            } else {
+                // Fallback if none of the expected columns exist
+                $unreadNotificationsCount = 0;
+            }
+            
+            if (isset($notifStmt)) {
+                $unreadNotificationsCount = $notifStmt->fetchColumn();
+            }
+        }
+    } catch (PDOException $e) {
+        // Log error silently
+        error_log("Notification count error: " . $e->getMessage());
+        $unreadNotificationsCount = 0;
     }
-
-    $unreadNotificationsCount = $stmt->fetchColumn();
 }
 
 // Get base URL for consistent paths
-$base_url = 'http://localhost/profitmarts/FlexFit';
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$base_url = $protocol . '://' . $host;
+
+// For local development, add the project folder if needed
+if ($host === 'localhost' || strpos($host, '127.0.0.1') !== false) {
+    $base_url .= '/featuresgym';
+}
 
 // Determine current section and set paths accordingly
 $in_gym = strpos($_SERVER['REQUEST_URI'], '/gym') !== false;
+$in_admin = strpos($_SERVER['REQUEST_URI'], '/admin') !== false;
 
 if ($in_gym) {
     $base_path = '../';
     $gym_path = './';
+    $admin_path = '../admin/';
+} elseif ($in_admin) {
+    $base_path = '../';
+    $gym_path = '../gym/';
+    $admin_path = './';
 } else {
     $base_path = './';
     $gym_path = 'gym/';
+    $admin_path = 'admin/';
 }
 
 /**
@@ -145,29 +203,64 @@ function isActiveSection($section, $active_class = 'text-yellow-400', $inactive_
  */
 function getPageUrl($page, $section = '')
 {
-    global $base_path, $gym_path;
+    global $base_path, $gym_path, $admin_path;
 
     if ($section === 'gym') {
         return $gym_path . $page;
+    } elseif ($section === 'admin') {
+        return $admin_path . $page;
     } else {
         return $base_path . $page;
     }
 }
 
+// Get site logo and branding
+$site_name = $site_settings['site_name'] ?? 'FlexFit';
+$site_logo = $site_settings['logo_path'] ?? 'assets/images/logo.png';
+$site_favicon = $site_settings['favicon_path'] ?? 'assets/images/favicon.ico';
 
+// Get theme settings
+$default_theme = $site_settings['default_theme'] ?? 'dark';
+$allow_user_theme = $site_settings['user_registration'] ?? '1';
+
+// Get user's preferred theme if allowed
+$user_theme = '';
+if ($allow_user_theme === '1' && isset($_COOKIE['preferred_theme'])) {
+    $user_theme = $_COOKIE['preferred_theme'];
+}
+
+// Determine the active theme
+$active_theme = $user_theme ?: $default_theme;
+
+// Check if site is in maintenance mode
+$maintenance_mode = $site_settings['maintenance_mode'] ?? '0';
+$is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 ?>
 <!DOCTYPE html>
-<html lang="en" data-default-theme="<?= htmlspecialchars($site_settings['theme']['default_theme'] ?? 'dark') ?>"
-    data-allow-user-theme="<?= htmlspecialchars($site_settings['theme']['allow_user_theme'] ?? '1') ?>">
+<html lang="en" data-default-theme="<?= htmlspecialchars($default_theme) ?>" 
+      data-allow-user-theme="<?= htmlspecialchars($allow_user_theme) ?>"
+      class="<?= $active_theme === 'light' ? 'light-mode' : '' ?>">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= htmlspecialchars($site_settings['seo']['site_title'] ?? 'ProFitMart - Find Your Perfect Gym') ?></title>
+    <title><?= htmlspecialchars($site_settings['site_name'] ?? 'FlexFit - Find Your Perfect Gym') ?></title>
 
     <!-- Meta tags -->
-    <meta name="description" content="<?= htmlspecialchars($site_settings['seo']['meta_description'] ?? '') ?>">
-    <meta name="keywords" content="<?= htmlspecialchars($site_settings['seo']['meta_keywords'] ?? '') ?>">
+    <meta name="description" content="<?= htmlspecialchars($site_settings['site_description'] ?? '') ?>">
+    <meta name="keywords" content="<?= htmlspecialchars($site_settings['meta_keywords'] ?? '') ?>">
+    <meta name="author" content="<?= htmlspecialchars($site_settings['meta_author'] ?? 'FlexFit') ?>">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="<?= $base_url ?>/<?= htmlspecialchars($site_favicon) ?>">
+    <link rel="apple-touch-icon" href="<?= $base_url ?>/<?= htmlspecialchars($site_settings['apple_touch_icon'] ?? 'assets/images/apple-touch-icon.png') ?>">
+    
+    <!-- Open Graph / Social Media Meta Tags -->
+    <meta property="og:title" content="<?= htmlspecialchars($site_settings['og_title'] ?? $site_settings['site_name'] ?? 'FlexFit') ?>">
+    <meta property="og:description" content="<?= htmlspecialchars($site_settings['og_description'] ?? $site_settings['site_description'] ?? '') ?>">
+    <meta property="og:image" content="<?= $base_url ?>/<?= htmlspecialchars($site_settings['og_image'] ?? 'assets/images/og-image.jpg') ?>">
+    <meta property="og:url" content="<?= htmlspecialchars($protocol . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]") ?>">
+    <meta property="og:type" content="website">
 
     <!-- Theme CSS -->
     <link rel="stylesheet" href="<?= $base_url ?>/assets/css/theme-variables.css">
@@ -183,1312 +276,156 @@ function getPageUrl($page, $section = '')
         body {
             background-color: var(--bg-primary);
             color: var(--text-primary);
+            font-family: <?= htmlspecialchars($site_settings['font_family'] ?? 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif') ?>;
         }
 
         /* Add custom CSS from database if available */
-        <?= $site_settings['custom']['custom_css'] ?? '' ?>
+        <?= $site_settings['custom_css'] ?? '' ?>
+        
+        /* Loader styles */
+        .loader-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease-out;
+        }
+        
+        .gym-loader {
+            display: inline-block;
+            position: relative;
+            width: 80px;
+            height: 80px;
+        }
+        
+        .spinner {
+            width: 64px;
+            height: 64px;
+            border: 8px solid rgba(255, 193, 7, 0.3);
+            border-radius: 50%;
+            border-top: 8px solid #ffc107;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Theme transition */
+        .theme-transition {
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        /* Notification badge */
+        .notification-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            transform: translate(25%, -25%);
+            background-color: #ef4444;
+            color: white;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.15rem 0.4rem;
+            min-width: 1.25rem;
+            text-align: center;
+        }
+        
+        /* Mobile menu animation */
+        .mobile-menu-enter {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        
+        .mobile-menu-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 200ms, transform 200ms;
+        }
+        
+        .mobile-menu-exit {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .mobile-menu-exit-active {
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 150ms, transform 150ms;
+        }
     </style>
 
-    <!-- Theme Switcher Script -->
-    <script src="<?= $base_url ?>/assets/js/theme-switcher.js"></script>
-
     <!-- Google Analytics if configured -->
-    <?php if (!empty($site_settings['seo']['google_analytics'])): ?>
-        <script async
-            src="https://www.googletagmanager.com/gtag/js?id=<?= htmlspecialchars($site_settings['seo']['google_analytics']) ?>"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag() { dataLayer.push(arguments); }
-            gtag('js', new Date());
-            gtag('config', '<?= htmlspecialchars($site_settings['seo']['google_analytics']) ?>');
-        </script>
+    <?php if (!empty($site_settings['google_analytics_id'])): ?>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=<?= htmlspecialchars($site_settings['google_analytics_id']) ?>"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '<?= htmlspecialchars($site_settings['google_analytics_id']) ?>');
+    </script>
     <?php endif; ?>
+    
+    <!-- Facebook Pixel if configured -->
+    <?php if (!empty($site_settings['facebook_pixel_id'])): ?>
+    <script>
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '<?= htmlspecialchars($site_settings['facebook_pixel_id']) ?>');
+        fbq('track', 'PageView');
+    </script>
+    <noscript>
+        <img height="1" width="1" style="display:none" 
+            src="https://www.facebook.com/tr?id=<?= htmlspecialchars($site_settings['facebook_pixel_id']) ?>&ev=PageView&noscript=1"/>
+    </noscript>
+    <?php endif; ?>
+    
+    <!-- Theme Switcher Script -->
+    <script src="<?= $base_url ?>/assets/js/theme-switcher.js" defer></script>
 </head>
 
 <body class="theme-transition">
-    <!-- Rest of your body content -->
-
-
-    <style>
-        .loader-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #1a1a1a;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-        }
-
-        .gym-loader {
-            position: relative;
-            width: 200px;
-            height: 200px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: #fbbf24;
-        }
-
-        .weightlifter i {
-            font-size: 60px;
-            animation: lift 1.5s infinite;
-            display: none;
-        }
-
-        .dumbbell i {
-            font-size: 40px;
-            margin-left: 20px;
-            animation: rotate 2s infinite linear;
-        }
-
-        @keyframes lift {
-            0% {
-                transform: translateY(0);
-            }
-
-            50% {
-                transform: translateY(-20px);
-            }
-
-            100% {
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes rotate {
-            from {
-                transform: rotate(0deg);
-            }
-
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* Toast animations */
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes slideOut {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-        }
-
-        #toast-container>div {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        }
-
-
-        :root {
-            /* Dark mode (default) variables */
-            --bg-primary: #111827;
-            --bg-secondary: #1F2937;
-            --bg-tertiary: #374151;
-            --text-primary: #FFFFFF;
-            --text-secondary: #9CA3AF;
-            --text-muted: #6B7280;
-            --accent: #FBBF24;
-            --accent-hover: #F59E0B;
-            --danger: #EF4444;
-            --danger-hover: #DC2626;
-            --success: #10B981;
-            --success-hover: #059669;
-            --info: #3B82F6;
-            --info-hover: #2563EB;
-            --border-color: #4B5563;
-            --card-bg: #1F2937;
-            --input-bg: #374151;
-            --input-text: #FFFFFF;
-            --shadow-color: rgba(0, 0, 0, 0.5);
-            --indigo: #6366F1;
-            --indigo-light: #818CF8;
-            --yellow-light: #FCD34D;
-        }
-
-        :root.light-mode {
-            /* Light mode variables */
-            --bg-primary: #F3F4F6;
-            --bg-secondary: #FFFFFF;
-            --bg-tertiary: #F9FAFB;
-            --text-primary: #111827;
-            --text-secondary: #4B5563;
-            --text-muted: #6B7280;
-            --accent: #D97706;
-            --accent-hover: #B45309;
-            --danger: #DC2626;
-            --danger-hover: #B91C1C;
-            --success: #059669;
-            --success-hover: #047857;
-            --info: #2563EB;
-            --info-hover: #1D4ED8;
-            --border-color: #E5E7EB;
-            --card-bg: #FFFFFF;
-            --input-bg: #F9FAFB;
-            --input-text: #111827;
-            --shadow-color: rgba(0, 0, 0, 0.1);
-            --indigo: #4F46E5;
-            --indigo-light: #6366F1;
-            --yellow-light: #FBBF24;
-        }
-
-        /* Apply the dark mode variables by default */
-        body {
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-
-        /* Background colors */
-        .bg-gray-100 {
-            background-color: var(--bg-primary);
-        }
-
-        .bg-gray-200 {
-            background-color: var(--bg-tertiary);
-        }
-
-        .bg-gray-600 {
-            background-color: var(--border-color);
-        }
-
-        .bg-gray-700 {
-            background-color: var(--bg-tertiary);
-        }
-
-        .bg-gray-800 {
-            background-color: var(--bg-secondary);
-        }
-
-        .bg-gray-900 {
-            background-color: var(--bg-primary);
-        }
-
-        .bg-black {
-            background-color: var(--bg-secondary);
-        }
-
-        .bg-white {
-            background-color: var(--card-bg);
-        }
-
-        /* From-to gradients */
-        .from-gray-900 {
-            --tw-gradient-from: var(--bg-primary);
-        }
-
-        .to-gray-800 {
-            --tw-gradient-to: var(--bg-secondary);
-        }
-
-        .to-black {
-            --tw-gradient-to: var(--bg-secondary);
-        }
-
-        /* Text colors */
-        .text-white {
-            color: var(--text-primary);
-        }
-
-        .text-black {
-            color: var(--text-primary);
-        }
-
-        .text-gray-100 {
-            color: var(--text-primary);
-        }
-
-        .text-gray-200 {
-            color: var(--text-primary);
-        }
-
-        .text-gray-300 {
-            color: var(--text-secondary);
-        }
-
-        .text-gray-400 {
-            color: var(--text-secondary);
-        }
-
-        .text-gray-500 {
-            color: var(--text-secondary);
-        }
-
-        .text-gray-600 {
-            color: var(--text-muted);
-        }
-
-        .text-gray-700 {
-            color: var(--text-muted);
-        }
-
-        .text-gray-800 {
-            color: var(--text-primary);
-        }
-
-        .text-gray-900 {
-            color: var(--text-primary);
-        }
-
-        /* Accent colors */
-        .text-yellow-300 {
-            color: var(--yellow-light);
-        }
-
-        .text-yellow-400 {
-            color: var(--accent);
-        }
-
-        .text-yellow-500 {
-            color: var(--accent);
-        }
-
-        .text-yellow-600 {
-            color: var(--accent-hover);
-        }
-
-        .bg-yellow-100 {
-            background-color: rgba(251, 191, 36, 0.1);
-        }
-
-        .bg-yellow-500 {
-            background-color: var(--accent);
-        }
-
-        .bg-yellow-600 {
-            background-color: var(--accent-hover);
-        }
-
-        .bg-yellow-900 {
-            background-color: rgba(251, 191, 36, 0.2);
-        }
-
-        .border-yellow-300 {
-            border-color: var(--yellow-light);
-        }
-
-        .border-yellow-500 {
-            border-color: var(--accent);
-        }
-
-        .border-yellow-600 {
-            border-color: var(--accent-hover);
-        }
-
-        /* Danger colors */
-        .text-red-300 {
-            color: var(--danger-hover);
-        }
-
-        .text-red-400 {
-            color: var(--danger);
-        }
-
-        .text-red-500 {
-            color: var(--danger);
-        }
-
-        .text-red-600 {
-            color: var(--danger-hover);
-        }
-
-        .text-red-800 {
-            color: var(--danger-hover);
-        }
-
-        .bg-red-100 {
-            background-color: rgba(239, 68, 68, 0.1);
-        }
-
-        .bg-red-500 {
-            background-color: var(--danger);
-        }
-
-        .bg-red-600 {
-            background-color: var(--danger-hover);
-        }
-
-        .bg-red-900 {
-            background-color: rgba(239, 68, 68, 0.2);
-        }
-
-        .border-red-500 {
-            border-color: var(--danger);
-        }
-
-        /* Success colors */
-        .text-green-300 {
-            color: var(--success-hover);
-        }
-
-        .text-green-500 {
-            color: var(--success);
-        }
-
-        .text-green-600 {
-            color: var(--success-hover);
-        }
-
-        .text-green-800 {
-            color: var(--success-hover);
-        }
-
-        .bg-green-100 {
-            background-color: rgba(16, 185, 129, 0.1);
-        }
-
-        .bg-green-500 {
-            background-color: var(--success);
-        }
-
-        .bg-green-600 {
-            background-color: var(--success-hover);
-        }
-
-        .bg-green-900 {
-            background-color: rgba(16, 185, 129, 0.2);
-        }
-
-        .border-green-500 {
-            border-color: var(--success);
-        }
-
-        /* Info colors */
-        .text-blue-300 {
-            color: var(--info-hover);
-        }
-
-        .text-blue-500 {
-            color: var(--info);
-        }
-
-        .text-blue-600 {
-            color: var(--info-hover);
-        }
-
-        .bg-blue-100 {
-            background-color: rgba(59, 130, 246, 0.1);
-        }
-
-        .bg-blue-500 {
-            background-color: var(--info);
-        }
-
-        .bg-blue-600 {
-            background-color: var(--info-hover);
-        }
-
-        .bg-blue-900 {
-            background-color: rgba(59, 130, 246, 0.2);
-        }
-
-        .border-blue-500 {
-            border-color: var(--info);
-        }
-
-        /* Indigo colors */
-        .text-indigo-300 {
-            color: var(--indigo-light);
-        }
-
-        .text-indigo-400 {
-            color: var(--indigo);
-        }
-
-        .text-indigo-500 {
-            color: var(--indigo);
-        }
-
-        .bg-indigo-100 {
-            background-color: rgba(99, 102, 241, 0.1);
-        }
-
-        .bg-indigo-500 {
-            background-color: var(--indigo);
-        }
-
-        .bg-indigo-600 {
-            background-color: var(--indigo);
-        }
-
-        .border-indigo-500 {
-            border-color: var(--indigo);
-        }
-
-        /* Border colors */
-        .border-gray-200 {
-            border-color: var(--border-color);
-        }
-
-        .border-gray-300 {
-            border-color: var(--border-color);
-        }
-
-        .border-gray-600 {
-            border-color: var(--border-color);
-        }
-
-        .border-gray-700 {
-            border-color: var(--border-color);
-        }
-
-        .border-gray-800 {
-            border-color: var(--border-color);
-        }
-
-        /* Input field styling with theme support */
-        input[type="text"],
-        input[type="email"],
-        input[type="password"],
-        input[type="number"],
-        input[type="date"],
-        input[type="time"],
-        input[type="search"],
-        input[type="tel"],
-        input[type="url"],
-        textarea,
-        select {
-            background-color: var(--input-bg);
-            color: var(--input-text);
-            border: 1px solid var(--border-color);
-            border-radius: 0.375rem;
-            padding: 0.5rem 0.75rem;
-            width: 100%;
-            font-size: 1rem;
-            line-height: 1.5;
-            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-        }
-
-        /* Focus state */
-        input[type="text"]:focus,
-        input[type="email"]:focus,
-        input[type="password"]:focus,
-        input[type="number"]:focus,
-        input[type="date"]:focus,
-        input[type="time"]:focus,
-        input[type="search"]:focus,
-        input[type="tel"]:focus,
-        input[type="url"]:focus,
-        textarea:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
-        }
-
-        /* Placeholder text */
-        ::placeholder {
-            color: var(--text-muted);
-            opacity: 0.7;
-        }
-
-        /* Disabled state */
-        input:disabled,
-        textarea:disabled,
-        select:disabled {
-            background-color: var(--bg-tertiary);
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
-        /* Error state */
-        input.error,
-        textarea.error,
-        select.error {
-            border-color: var(--danger);
-        }
-
-        input.error:focus,
-        textarea.error:focus,
-        select.error:focus {
-            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-        }
-
-        /* Success state */
-        input.success,
-        textarea.success,
-        select.success {
-            border-color: var(--success);
-        }
-
-        input.success:focus,
-        textarea.success:focus,
-        select.success:focus {
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-        }
-
-        /* Checkbox and radio styling */
-        input[type="checkbox"],
-        input[type="radio"] {
-            appearance: none;
-            -webkit-appearance: none;
-            width: 1.25rem;
-            height: 1.25rem;
-            border: 1px solid var(--border-color);
-            background-color: var(--input-bg);
-            display: inline-block;
-            position: relative;
-            cursor: pointer;
-            margin-right: 0.5rem;
-            vertical-align: middle;
-        }
-
-        input[type="checkbox"] {
-            border-radius: 0.25rem;
-        }
-
-        input[type="radio"] {
-            border-radius: 50%;
-        }
-
-        input[type="checkbox"]:checked,
-        input[type="radio"]:checked {
-            background-color: var(--accent);
-            border-color: var(--accent);
-        }
-
-        input[type="checkbox"]:checked::after {
-            content: "✓";
-            font-size: 0.875rem;
-            color: white;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        input[type="radio"]:checked::after {
-            content: "";
-            width: 0.625rem;
-            height: 0.625rem;
-            border-radius: 50%;
-            background-color: white;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        input[type="checkbox"]:focus,
-        input[type="radio"]:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
-        }
-
-        /* File input styling */
-        input[type="file"] {
-            background-color: var(--input-bg);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.375rem;
-            padding: 0.375rem 0.75rem;
-            cursor: pointer;
-            width: 100%;
-        }
-
-        input[type="file"]::-webkit-file-upload-button {
-            background-color: var(--accent);
-            color: white;
-            border: none;
-            padding: 0.375rem 0.75rem;
-            margin-right: 0.75rem;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            transition: background-color 0.15s ease-in-out;
-        }
-
-        input[type="file"]::-webkit-file-upload-button:hover {
-            background-color: var(--accent-hover);
-        }
-
-        /* Range input styling */
-        input[type="range"] {
-            -webkit-appearance: none;
-            width: 100%;
-            height: 0.5rem;
-            background-color: var(--bg-tertiary);
-            border-radius: 0.25rem;
-            outline: none;
-        }
-
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 1.25rem;
-            height: 1.25rem;
-            background-color: var(--accent);
-            border-radius: 50%;
-            cursor: pointer;
-        }
-
-        input[type="range"]::-moz-range-thumb {
-            width: 1.25rem;
-            height: 1.25rem;
-            background-color: var(--accent);
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
-        }
-
-        /* Card styling */
-        .card {
-            background-color: var(--card-bg);
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px var(--shadow-color);
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        /* Button styling */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.5rem 1rem;
-            font-weight: 500;
-            border-radius: 0.375rem;
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-        }
-
-        .btn-primary {
-            background-color: var(--accent);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background-color: var(--accent-hover);
-        }
-
-        .btn-danger {
-            background-color: var(--danger);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background-color: var(--danger-hover);
-        }
-
-        .btn-success {
-            background-color: var(--success);
-            color: white;
-        }
-
-        .btn-success:hover {
-            background-color: var(--success-hover);
-        }
-
-        .btn-info {
-            background-color: var(--info);
-            color: white;
-        }
-
-        .btn-info:hover {
-            background-color: var(--info-hover);
-        }
-
-        .btn-outline {
-            background-color: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-        }
-
-        .btn-outline:hover {
-            background-color: var(--bg-tertiary);
-        }
-
-        /* Table styling */
-        table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            margin-bottom: 1.5rem;
-        }
-
-        table th {
-            background-color: var(--bg-tertiary);
-            color: var(--text-primary);
-            font-weight: 600;
-            text-align: left;
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        table td {
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            color: var(--text-primary);
-        }
-
-        table tr:hover td {
-            background-color: var(--bg-tertiary);
-        }
-
-        /* Badge styling */
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            line-height: 1;
-            border-radius: 9999px;
-        }
-
-        .badge-success {
-            background-color: rgba(16, 185, 129, 0.2);
-            color: var(--success);
-        }
-
-        .badge-danger {
-            background-color: rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-        }
-
-        .badge-warning {
-            background-color: rgba(251, 191, 36, 0.2);
-            color: var(--accent);
-        }
-
-        .badge-info {
-            background-color: rgba(59, 130, 246, 0.2);
-            color: var(--info);
-        }
-
-        /* Alert styling */
-        .alert {
-            padding: 1rem;
-            border-radius: 0.375rem;
-            margin-bottom: 1rem;
-            border-left-width: 4px;
-        }
-
-        .alert-success {
-            background-color: rgba(16, 185, 129, 0.1);
-            border-color: var(--success);
-            color: var(--success);
-        }
-
-        .alert-danger {
-            background-color: rgba(239, 68, 68, 0.1);
-            border-color: var(--danger);
-            color: var(--danger);
-        }
-
-        .alert-warning {
-            background-color: rgba(251, 191, 36, 0.1);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .alert-info {
-            background-color: rgba(59, 130, 246, 0.1);
-            border-color: var(--info);
-            color: var(--info);
-        }
-
-        /* Modal styling */
-        .modal {
-            background-color: var(--card-bg);
-            border-radius: 0.5rem;
-            box-shadow: 0 10px 15px -3px var(--shadow-color), 0 4px 6px -2px var(--shadow-color);
-        }
-
-        .modal-header {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .modal-body {
-            padding: 1rem;
-        }
-
-        .modal-footer {
-            padding: 1rem;
-            border-top: 1px solid var(--border-color);
-        }
-
-        /* Dropdown styling */
-        .dropdown-menu {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 0.375rem;
-            box-shadow: 0 4px 6px var(--shadow-color);
-        }
-
-        .dropdown-item {
-            padding: 0.5rem 1rem;
-            color: var(--text-primary);
-        }
-
-        .dropdown-item:hover {
-            background-color: var(--bg-tertiary);
-        }
-
-        .dropdown-divider {
-            border-top: 1px solid var(--border-color);
-            margin: 0.5rem 0;
-        }
-
-        /* Navbar styling */
-        .navbar {
-            background-color: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        /* Sidebar styling */
-        .sidebar {
-            background-color: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-        }
-
-        .sidebar-link {
-            color: var(--text-secondary);
-            padding: 0.75rem 1rem;
-            display: flex;
-            align-items: center;
-        }
-
-        .sidebar-link:hover,
-        .sidebar-link.active {
-            background-color: var(--bg-tertiary);
-            color: var(--accent);
-        }
-
-        /* Pagination styling */
-        .pagination {
-            display: flex;
-            list-style: none;
-            padding: 0;
-            margin: 1.5rem 0;
-        }
-
-        .page-item {
-            margin: 0 0.25rem;
-        }
-
-        .page-link {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.375rem;
-            background-color: var(--bg-tertiary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-        }
-
-        .page-link:hover {
-            background-color: var(--accent);
-            color: white;
-            border-color: var(--accent);
-        }
-
-        .page-item.active .page-link {
-            background-color: var(--accent);
-            color: white;
-            border-color: var(--accent);
-        }
-
-        /* Progress bar styling */
-        .progress {
-            height: 0.75rem;
-            background-color: var(--bg-tertiary);
-            border-radius: 9999px;
-            overflow: hidden;
-            margin-bottom: 1rem;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background-color: var(--accent);
-        }
-
-        /* Tooltip styling */
-        .tooltip {
-            position: relative;
-            display: inline-block;
-        }
-
-        .tooltip .tooltip-text {
-            visibility: hidden;
-            background-color: var(--bg-secondary);
-            color: var(--text-primary);
-            text-align: center;
-            padding: 0.5rem;
-            border-radius: 0.375rem;
-            position: absolute;
-            z-index: 1;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
-            opacity: 0;
-            transition: opacity 0.3s;
-            box-shadow: 0 2px 4px var(--shadow-color);
-            border: 1px solid var(--border-color);
-            width: max-content;
-            max-width: 250px;
-        }
-
-        .tooltip:hover .tooltip-text {
-            visibility: visible;
-            opacity: 1;
-        }
-
-        /* Specific components from your codebase */
-        /* Statistics Cards */
-        .statistics-card {
-            background-color: var(--bg-secondary);
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 6px var(--shadow-color);
-            padding: 1rem;
-        }
-
-        .statistics-card-icon {
-            background-color: rgba(59, 130, 246, 0.2);
-            color: var(--info);
-            padding: 0.75rem;
-            border-radius: 9999px;
-        }
-
-        .statistics-card-icon.yellow {
-            background-color: rgba(251, 191, 36, 0.2);
-            color: var(--accent);
-        }
-
-        .statistics-card-icon.green {
-            background-color: rgba(16, 185, 129, 0.2);
-            color: var(--success);
-        }
-
-        .statistics-card-icon.red {
-            background-color: rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-        }
-
-        .statistics-card-icon.purple {
-            background-color: rgba(139, 92, 246, 0.2);
-            color: var(--indigo);
-        }
-
-        /* User cards */
-        .user-card {
-            background-color: var(--bg-tertiary);
-            border-radius: 0.5rem;
-            padding: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .user-avatar {
-            height: 2.5rem;
-            width: 2.5rem;
-            border-radius: 9999px;
-            object-fit: cover;
-        }
-
-        .user-avatar-placeholder {
-            height: 2.5rem;
-            width: 2.5rem;
-            border-radius: 9999px;
-            background-color: var(--bg-tertiary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        /* Schedule cards */
-        .schedule-card {
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            transition: box-shadow 0.2s ease-in-out;
-        }
-
-        .schedule-card:hover {
-            box-shadow: 0 4px 6px var(--shadow-color);
-        }
-
-        .schedule-icon {
-            background-color: rgba(251, 191, 36, 0.1);
-            padding: 0.75rem;
-            border-radius: 9999px;
-        }
-
-        .schedule-status {
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .schedule-status.completed {
-            background-color: rgba(16, 185, 129, 0.1);
-            color: var(--success);
-        }
-
-        .schedule-status.cancelled {
-            background-color: rgba(239, 68, 68, 0.1);
-            color: var(--danger);
-        }
-
-        .schedule-status.scheduled {
-            background-color: rgba(251, 191, 36, 0.1);
-            color: var(--accent);
-        }
-
-        /* Calendar styling */
-        .fc-theme-standard .fc-scrollgrid,
-        .fc-theme-standard td,
-        .fc-theme-standard th {
-            border-color: var(--border-color);
-        }
-
-        .fc-theme-standard .fc-toolbar {
-            color: var(--text-primary);
-        }
-
-        .fc-theme-standard .fc-button {
-            background-color: var(--bg-tertiary);
-            border-color: var(--border-color);
-            color: var(--text-primary);
-        }
-
-        .fc-theme-standard .fc-button:hover {
-            background-color: var(--accent);
-            border-color: var(--accent);
-            color: white;
-        }
-
-        .fc-theme-standard .fc-button-primary:not(:disabled).fc-button-active,
-        .fc-theme-standard .fc-button-primary:not(:disabled):active {
-            background-color: var(--accent);
-            border-color: var(--accent);
-            color: white;
-        }
-
-        .fc-theme-standard .fc-daygrid-day-number,
-        .fc-theme-standard .fc-col-header-cell-cushion {
-            color: var(--text-primary);
-        }
-
-        .fc-theme-standard .fc-event {
-            background-color: var(--accent);
-            border-color: var(--accent-hover);
-        }
-
-        /* Transitions for smooth theme switching */
-        .theme-transition,
-        .theme-transition * {
-            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-
-            to {
-                opacity: 1;
-            }
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateY(-10px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes slideOut {
-            from {
-                transform: translateY(0);
-                opacity: 1;
-            }
-
-            to {
-                transform: translateY(-10px);
-                opacity: 0;
-            }
-        }
-
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease-in-out;
-        }
-
-        .animate-slide-in {
-            animation: slideIn 0.3s ease-out forwards;
-        }
-
-        .animate-slide-out {
-            animation: slideOut 0.3s ease-in forwards;
-        }
-
-        /* Toast notifications */
-        #toast-container {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            max-width: 24rem;
-        }
-
-        .toast {
-            border-radius: 0.375rem;
-            padding: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 4px 6px var(--shadow-color);
-            animation: slideIn 0.3s ease-out forwards;
-        }
-
-        .toast-success {
-            background-color: var(--success);
-            color: white;
-        }
-
-        .toast-error {
-            background-color: var(--danger);
-            color: white;
-        }
-
-        .toast-warning {
-            background-color: var(--accent);
-            color: white;
-        }
-
-        .toast-info {
-            background-color: var(--info);
-            color: white;
-        }
-
-        /* Loader */
-        .loader-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg-primary);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            opacity: 1;
-            transition: opacity 0.5s ease;
-        }
-
-        .loader {
-            border: 4px solid var(--bg-tertiary);
-            border-top: 4px solid var(--accent);
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* Media queries for responsive design */
-        @media (max-width: 640px) {
-            .card {
-                padding: 1rem;
-            }
-
-            table th,
-            table td {
-                padding: 0.5rem;
-            }
-
-            .btn {
-                padding: 0.375rem 0.75rem;
-            }
-        }
-    </style>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const loader = document.querySelector('.loader-container');
-
-            window.addEventListener('load', () => {
-                setTimeout(() => {
-                    loader.style.opacity = '0';
-                    setTimeout(() => {
-                        loader.style.display = 'none';
-                    }, 100);
-                }, 100);
-            });
-        });
-
-        // toggle theme
-        function initTheme() {
-            const theme = localStorage.getItem('theme') || 'dark';
-            document.documentElement.classList.toggle('light-mode', theme === 'light');
-            return theme;
-        }
-
-        function toggleTheme() {
-            const currentTheme = document.documentElement.classList.contains('light-mode') ? 'dark' : 'light';
-            localStorage.setItem('theme', currentTheme);
-            document.documentElement.classList.toggle('light-mode');
-        }
-        document.addEventListener('DOMContentLoaded', () => {
-            initTheme();
-            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-        });
-    </script>
-    </head>
-
-    <body class="bg-gray-900 text-white">
-        <div class="loader-container">
-            <div class="gym-loader">
-                <div class="weightlifter">
-                    <i class="fas fa-dumbbell"></i>
-                </div>
-                <div class="dumbbell">
-                    <i class="fas fa-dumbbell"></i>
-                </div>
+    <?php if ($maintenance_mode === '1' && !$is_admin): ?>
+        <div class="min-h-screen flex items-center justify-center bg-gray-900 px-4">
+            <div class="max-w-md w-full bg-gray-800 rounded-lg shadow-lg p-8 text-center">
+                <i class="fas fa-tools text-yellow-500 text-5xl mb-6"></i>
+                <h1 class="text-3xl font-bold text-white mb-4">Site Maintenance</h1>
+                <p class="text-gray-300 mb-6">
+                    We're currently performing scheduled maintenance. We'll be back online shortly.
+                </p>
+                <p class="text-gray-400 text-sm">
+                    <?= htmlspecialchars($site_settings['maintenance_message'] ?? 'Thank you for your patience.') ?>
+                </p>
             </div>
         </div>
+        <?php exit; ?>
+    <?php endif; ?>
 
-        <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col space-y-4 max-w-xs"></div>
+    <!-- Page loader -->
+    <?php if ($site_settings['enable_page_loader'] ?? '0' === '1'): ?>
+    <div class="loader-container" id="page-loader">
+        <div class="gym-loader">
+            <div class="spinner"></div>
+        </div>
+    </div>
+    <?php endif; ?>
 
-        <nav class="bg-gray-800 fixed w-full z-10 top-0">
+    <!-- Navigation -->
+    <nav class="bg-gray-800 fixed w-full z-10 top-0">
             <div class="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
                 <div class="relative flex items-center justify-between h-16">
                     <div class="absolute inset-y-0 left-0 flex items-center sm:hidden">
@@ -1507,9 +444,15 @@ function getPageUrl($page, $section = '')
                                     d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
+                        <div class="flex-shrink-0 flex items-center">
+                            <a href="<?php echo $base_url; ?>/" class="flex items-center">
+                                <span class="text-yellow-500 text-2xl font-bold mr-1">Flex</span>
+                                <span class="text-white text-2xl font-bold">Fit</span>
+                            </a>
+                        </div>
                     </div>
                     <div class="flex-1 flex items-center justify-center sm:items-stretch sm:justify-start">
-                        <div class="flex-shrink-0 flex items-center">
+                        <div class="flex-shrink-0 flex items-center hidden sm:block">
                             <a href="<?php echo $base_url; ?>/" class="flex items-center">
                                 <span class="text-yellow-500 text-2xl font-bold mr-1">Flex</span>
                                 <span class="text-white text-2xl font-bold">Fit</span>
@@ -1519,26 +462,137 @@ function getPageUrl($page, $section = '')
                             <div class="flex space-x-4">
                                 <?php if (isset($_SESSION['owner_id'])): ?>
                                     <!-- Gym Partner Navigation -->
-                                    <a href="<?php echo $base_url; ?>/gym/dashboard.php"
-                                        class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium <?php echo isActivePage('dashboard.php', 'bg-gray-900 text-white'); ?>">
-                                        Dashboard
-                                    </a>
-                                    <a href="<?php echo $base_url; ?>/gym/member_list.php"
-                                        class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium <?php echo isActivePage('member_list.php', 'bg-gray-900 text-white'); ?>">
-                                        Members
-                                    </a>
-                                    <a href="<?php echo $base_url; ?>/gym/schedules.php"
-                                        class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium <?php echo isActivePage('schedules.php', 'bg-gray-900 text-white'); ?>">
-                                        Schedules
-                                    </a>
-                                    <a href="<?php echo $base_url; ?>/gym/membership_plans.php"
-                                        class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium <?php echo isActivePage('membership_plans.php', 'bg-gray-900 text-white'); ?>">
-                                        Plans
-                                    </a>
-                                    <a href="<?php echo $base_url; ?>/gym/revenue.php"
-                                        class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium <?php echo isActivePage('revenue.php', 'bg-gray-900 text-white'); ?>">
-                                        Revenue
-                                    </a>
+                                    <div class="flex items-baseline space-x-1 md:space-x-2 lg:space-x-4">
+                                        <!-- Most important direct links -->
+                                        <a href="<?php echo $base_url; ?>/gym/dashboard.php"
+                                            class="flex items-center text-white hover:text-yellow-400 px-2 py-2 rounded-md text-sm md:text-base lg:text-lg font-medium <?php echo isActivePage('dashboard.php') || isActiveSection('gym'); ?>">
+                                            <i
+                                                class="fas fa-tachometer-alt mr-1 hidden sm:inline-block"></i><span>Dashboard</span>
+                                        </a>
+                                        <a href="<?php echo $base_url; ?>/gym/edit_gym_details.php"
+                                            class="flex items-center text-white hover:text-yellow-400 px-2 py-2 rounded-md text-sm md:text-base lg:text-lg font-medium <?php echo isActivePage('edit_gym_details.php'); ?>">
+                                            <i class="fas fa-dumbbell mr-1 hidden sm:inline-block"></i><span>Gym</span>
+                                        </a>
+                                        <a href="<?php echo $base_url; ?>/gym/member_list.php"
+                                            class="flex items-center text-white hover:text-yellow-400 px-2 py-2 rounded-md text-sm md:text-base lg:text-lg font-medium <?php echo isActivePage('member_list.php'); ?>">
+                                            <i class="fas fa-users mr-1 hidden sm:inline-block"></i><span>Members</span>
+                                        </a>
+                                        <a href="<?php echo $base_url; ?>/gym/booking.php"
+                                            class="flex items-center text-white hover:text-yellow-400 px-2 py-2 rounded-md text-sm md:text-base lg:text-lg font-medium <?php echo isActivePage('booking.php'); ?>">
+                                            <i
+                                                class="fas fa-calendar-check mr-1 hidden sm:inline-block"></i><span>Schedules</span>
+                                        </a>
+                                        <!-- More dropdown for remaining options -->
+                                        <div class="relative">
+                                            <?php
+                                            // Check if current page is in the "More" dropdown
+                                            $morePages = [
+                                                'earning-history.php',
+                                                'withdraw.php',
+                                                'tournaments.php',
+                                                'class_bookings.php',
+                                                'visit_attendance.php',
+                                                'view_reviews.php',
+                                                'notifications.php',
+                                                'payment_methods.php',
+                                                'gym_policies.php',
+                                                'reports.php',
+                                                'settings.php'
+                                            ];
+                                            $isMoreActive = false;
+                                            foreach ($morePages as $page) {
+                                                if (isActivePage($page)) {
+                                                    $isMoreActive = true;
+                                                    break;
+                                                }
+                                            }
+                                            ?>
+                                            <button id="moreDropdownButton"
+                                                class="text-white hover:text-yellow-400 px-2 py-2 rounded-md text-sm md:text-base lg:text-lg font-medium flex items-center <?php echo $isMoreActive ? 'text-yellow-400' : ''; ?>">
+                                                <i
+                                                    class="fas fa-ellipsis-h mr-1 hidden sm:inline-block"></i><span>More</span><i
+                                                    class="fas fa-chevron-down ml-1 text-xs"></i>
+                                            </button>
+                                            <div id="moreDropdownMenu"
+                                                class="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none hidden z-50">
+                                                <div class="py-1 grid grid-cols-1 divide-y divide-gray-700">
+                                                    <a href="<?php echo $base_url; ?>/gym/earning-history.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('earning-history.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-chart-line mr-2"></i> Earnings
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/withdraw.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('withdraw.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-money-bill-wave mr-2"></i> Withdrawals
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/tournaments.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('tournaments.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-trophy mr-2"></i> Tournaments
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/class_bookings.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('class_bookings.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-chalkboard-teacher mr-2"></i> Class Bookings
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/visit_attendance.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('visit_attendance.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-clipboard-check mr-2"></i> Visit Attendance
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/view_reviews.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('view_reviews.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-star mr-2"></i> Reviews
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/notifications.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('notifications.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-bell mr-2"></i> Notifications
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/payment_methods.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('payment_methods.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-credit-card mr-2"></i> Payment Methods
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/gym_policies.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('gym_policies.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-gavel mr-2"></i> Policies
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/reports.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('reports.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-chart-bar mr-2"></i> Reports
+                                                    </a>
+                                                    <a href="<?php echo $base_url; ?>/gym/settings.php"
+                                                        class="text-white hover:text-yellow-400 px-3 py-2 text-sm font-medium <?php echo isActivePage('settings.php') ? 'text-yellow-400 bg-gray-700' : ''; ?>">
+                                                        <i class="fas fa-cogs mr-2"></i> Settings
+                                                    </a>
+                                                    <?php if ($account_type !== 'premium'): ?>
+                                                        <!--<a href="<?php echo $base_url; ?>/gym/upgrade.php"-->
+                                                        <!--    class="block px-4 py-2 text-sm text-yellow-400 hover:bg-yellow-500 hover:text-black">-->
+                                                        <!--    <i class="fas fa-crown mr-2"></i> Upgrade to Premium-->
+                                                        <!--</a>-->
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <script>
+                                        // Toggle dropdown on click
+                                        document.addEventListener('DOMContentLoaded', function () {
+                                            const moreDropdownButton = document.getElementById('moreDropdownButton');
+                                            const moreDropdownMenu = document.getElementById('moreDropdownMenu');
+
+                                            // Toggle dropdown when clicking the button
+                                            moreDropdownButton.addEventListener('click', function (e) {
+                                                e.preventDefault();
+                                                moreDropdownMenu.classList.toggle('hidden');
+                                            });
+
+                                            // Close dropdown when clicking outside
+                                            document.addEventListener('click', function (e) {
+                                                if (!moreDropdownButton.contains(e.target) && !moreDropdownMenu.contains(e.target)) {
+                                                    moreDropdownMenu.classList.add('hidden');
+                                                }
+                                            });
+                                        });
+                                    </script>
+
+
                                 <?php elseif (isset($_SESSION['user_id']) && $_SESSION['role'] === 'member'): ?>
                                     <!-- Member Navigation -->
                                     <a href="<?php echo $base_url; ?>/dashboard.php"
@@ -1604,8 +658,6 @@ function getPageUrl($page, $section = '')
                                     d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                             </svg>
                         </button>
-
-
 
                         <?php if ($isLoggedIn): ?>
                             <!-- Notification button -->
@@ -1686,9 +738,9 @@ function getPageUrl($page, $section = '')
 
                                     <?php if (isset($_SESSION['owner_id'])): ?>
                                         <!-- Gym Partner Profile Menu -->
-                                        <a href="<?php echo $base_url; ?>/gym/profile.php"
+                                        <!-- <a href="<?php echo $base_url; ?>/gym/profile.php"
                                             class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white"
-                                            role="menuitem">Your Profile</a>
+                                            role="menuitem">Your Profile</a> -->
                                         <a href="<?php echo $base_url; ?>/gym/settings.php"
                                             class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white"
                                             role="menuitem">Settings</a>
@@ -1739,310 +791,358 @@ function getPageUrl($page, $section = '')
                         <!-- Gym Partner Mobile Navigation -->
                         <a href="<?php echo $base_url; ?>/gym/dashboard.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('dashboard.php', 'bg-gray-900 text-white'); ?>">
-                            Dashboard
+                            <i class="fas fa-tachometer-alt mr-2"></i> Dashboard
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/edit_gym_details.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('edit_gym_details.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-dumbbell mr-2"></i> Gym
                         </a>
                         <a href="<?php echo $base_url; ?>/gym/member_list.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('member_list.php', 'bg-gray-900 text-white'); ?>">
-                            Members
+                            <i class="fas fa-users mr-2"></i> Members
                         </a>
-                        <a href="<?php echo $base_url; ?>/gym/schedules.php"
-                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('schedules.php', 'bg-gray-900 text-white'); ?>">
-                            Schedules
+                        <a href="<?php echo $base_url; ?>/gym/booking.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('booking.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-calendar-check mr-2"></i> Schedules
                         </a>
-                        <a href="<?php echo $base_url; ?>/gym/membership_plans.php"
-                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('membership_plans.php', 'bg-gray-900 text-white'); ?>">
-                            Plans
+                        <a href="<?php echo $base_url; ?>/gym/earning-history.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('earning-history.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-chart-line mr-2"></i> Earnings
                         </a>
-                        <a href="<?php echo $base_url; ?>/gym/revenue.php"
-                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('revenue.php', 'bg-gray-900 text-white'); ?>">
-                            Revenue
+                        <a href="<?php echo $base_url; ?>/gym/withdraw.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('withdraw.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-money-bill-wave mr-2"></i> Withdrawals
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/tournaments.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('tournaments.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-trophy mr-2"></i> Tournaments
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/class_bookings.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('class_bookings.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-chalkboard-teacher mr-2"></i> Class Bookings
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/visit_attendance.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('visit_attendance.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-clipboard-check mr-2"></i> Visit Attendance
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/view_reviews.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('view_reviews.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-star mr-2"></i> Reviews
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/notifications.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('notifications.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-bell mr-2"></i> Notifications
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/payment_methods.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('payment_methods.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-credit-card mr-2"></i> Payment Methods
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/gym_policies.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('gym_policies.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-gavel mr-2"></i> Policies
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/reports.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('reports.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-chart-bar mr-2"></i> Reports
+                        </a>
+                        <a href="<?php echo $base_url; ?>/gym/settings.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('settings.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-cogs mr-2"></i> Settings
                         </a>
                     <?php elseif (isset($_SESSION['user_id']) && $_SESSION['role'] === 'member'): ?>
                         <!-- Member Mobile Navigation -->
                         <a href="<?php echo $base_url; ?>/dashboard.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('dashboard.php', 'bg-gray-900 text-white'); ?>">
-                            Dashboard
+                            <i class="fas fa-tachometer-alt mr-2"></i> Dashboard
                         </a>
-                        <a href="<?php echo $base_url; ?>/my_memberships.php"
-                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('my_memberships.php', 'bg-gray-900 text-white'); ?>">
-                            My Memberships
+                        <a href="<?php echo $base_url; ?>/view_membership.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('view_memberships.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-id-card mr-2"></i> My Memberships
                         </a>
-                        <a href="<?php echo $base_url; ?>/my_schedules.php"
+                        <a href="<?php echo $base_url; ?>/schedule-history.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('my_schedules.php', 'bg-gray-900 text-white'); ?>">
-                            My Schedules
+                            <i class="fas fa-calendar-alt mr-2"></i> My Schedules
                         </a>
                         <a href="<?php echo $base_url; ?>/all-gyms.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('all-gyms.php', 'bg-gray-900 text-white'); ?>">
-                            Find Gyms
+                            <i class="fas fa-search mr-2"></i> Find Gyms
+                        </a>
+                        <a href="<?php echo $base_url; ?>/tournaments.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('tournaments.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-trophy mr-2"></i> Tournaments
+                        </a>
+                        <a href="<?php echo $base_url; ?>/payment_history.php"
+                            class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('payment_history.php', 'bg-gray-900 text-white'); ?>">
+                            <i class="fas fa-credit-card mr-2"></i> Payments
                         </a>
                     <?php else: ?>
                         <!-- Public Mobile Navigation -->
                         <a href="<?php echo $base_url; ?>/"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('index.php', 'bg-gray-900 text-white'); ?>">
-                            Home
+                            <i class="fas fa-home mr-2"></i> Home
                         </a>
                         <a href="<?php echo $base_url; ?>/all-gyms.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('all-gyms.php', 'bg-gray-900 text-white'); ?>">
-                            Find Gyms
+                            <i class="fas fa-search mr-2"></i> Find Gyms
                         </a>
                         <a href="<?php echo $base_url; ?>/about-us.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('about-us.php', 'bg-gray-900 text-white'); ?>">
-                            About Us
+                            <i class="fas fa-info-circle mr-2"></i> About Us
                         </a>
                         <a href="<?php echo $base_url; ?>/contact.php"
                             class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium <?php echo isActivePage('contact.php', 'bg-gray-900 text-white'); ?>">
-                            Contact
+                            <i class="fas fa-envelope mr-2"></i> Contact
                         </a>
                     <?php endif; ?>
                 </div>
             </div>
+
         </nav>
 
-        <?php if (isset($_SESSION['success']) || isset($_SESSION['error']) || isset($_SESSION['warning']) || isset($_SESSION['info'])): ?>
-            <div class="container mx-auto px-4 pt-20">
-                <?php if (isset($_SESSION['success'])): ?>
-                    <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded" role="alert">
-                        <p><?php echo $_SESSION['success']; ?></p>
+    <!-- Flash messages -->
+    <?php if (isset($_SESSION['success'])): ?>
+        <div class="flash-message success-message bg-green-600 text-white" id="success-message">
+            <div class="max-w-7xl mx-auto py-3 px-3 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between flex-wrap">
+                    <div class="w-0 flex-1 flex items-center">
+                        <span class="flex p-2 rounded-lg bg-green-800">
+                            <i class="fas fa-check"></i>
+                        </span>
+                        <p class="ml-3 font-medium truncate">
+                            <?= htmlspecialchars($_SESSION['success']) ?>
+                        </p>
                     </div>
-                    <?php unset($_SESSION['success']); ?>
-                <?php endif; ?>
-
-                <?php if (isset($_SESSION['error'])): ?>
-                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded" role="alert">
-                        <p><?php echo $_SESSION['error']; ?></p>
+                    <div class="order-2 flex-shrink-0 sm:order-3 sm:ml-3">
+                        <button type="button" class="close-flash -mr-1 flex p-2 rounded-md hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-white sm:-mr-2">
+                            <span class="sr-only">Dismiss</span>
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
-                    <?php unset($_SESSION['error']); ?>
-                <?php endif; ?>
-
-                <?php if (isset($_SESSION['warning'])): ?>
-                    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded" role="alert">
-                        <p><?php echo $_SESSION['warning']; ?></p>
-                    </div>
-                    <?php unset($_SESSION['warning']); ?>
-                <?php endif; ?>
-
-                <?php if (isset($_SESSION['info'])): ?>
-                    <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4 rounded" role="alert">
-                        <p><?php echo $_SESSION['info']; ?></p>
-                    </div>
-                    <?php unset($_SESSION['info']); ?>
-                <?php endif; ?>
+                </div>
             </div>
-        <?php endif; ?>
+            </div>
+        <?php unset($_SESSION['success']); ?>
+    <?php endif; ?>
 
-        <script>
-            // Mobile menu toggle
-            document.getElementById('mobile-menu-button').addEventListener('click', function () {
-                const mobileMenu = document.getElementById('mobile-menu');
-                mobileMenu.classList.toggle('hidden');
-            });
+    <?php if (isset($_SESSION['error'])): ?>
+        <div class="flash-message error-message bg-red-600 text-white" id="error-message">
+            <div class="max-w-7xl mx-auto py-3 px-3 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between flex-wrap">
+                    <div class="w-0 flex-1 flex items-center">
+                        <span class="flex p-2 rounded-lg bg-red-800">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                        <p class="ml-3 font-medium truncate">
+                            <?= htmlspecialchars($_SESSION['error']) ?>
+                        </p>
+                    </div>
+                    <div class="order-2 flex-shrink-0 sm:order-3 sm:ml-3">
+                        <button type="button" class="close-flash -mr-1 flex p-2 rounded-md hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-white sm:-mr-2">
+                            <span class="sr-only">Dismiss</span>
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php unset($_SESSION['error']); ?>
+    <?php endif; ?>
 
-            // User menu toggle
+    <?php if (isset($_SESSION['warning'])): ?>
+        <div class="flash-message warning-message bg-yellow-500 text-black" id="warning-message">
+            <div class="max-w-7xl mx-auto py-3 px-3 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between flex-wrap">
+                    <div class="w-0 flex-1 flex items-center">
+                        <span class="flex p-2 rounded-lg bg-yellow-600">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </span>
+                        <p class="ml-3 font-medium truncate">
+                            <?= htmlspecialchars($_SESSION['warning']) ?>
+                        </p>
+                    </div>
+                    <div class="order-2 flex-shrink-0 sm:order-3 sm:ml-3">
+                        <button type="button" class="close-flash -mr-1 flex p-2 rounded-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-white sm:-mr-2">
+                            <span class="sr-only">Dismiss</span>
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php unset($_SESSION['warning']); ?>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['info'])): ?>
+        <div class="flash-message info-message bg-blue-600 text-white" id="info-message">
+            <div class="max-w-7xl mx-auto py-3 px-3 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between flex-wrap">
+                    <div class="w-0 flex-1 flex items-center">
+                        <span class="flex p-2 rounded-lg bg-blue-800">
+                            <i class="fas fa-info-circle"></i>
+                        </span>
+                        <p class="ml-3 font-medium truncate">
+                            <?= htmlspecialchars($_SESSION['info']) ?>
+                        </p>
+                    </div>
+                    <div class="order-2 flex-shrink-0 sm:order-3 sm:ml-3">
+                        <button type="button" class="close-flash -mr-1 flex p-2 rounded-md hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-white sm:-mr-2">
+                            <span class="sr-only">Dismiss</span>
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php unset($_SESSION['info']); ?>
+    <?php endif; ?>
+
+    <!-- JavaScript for navbar functionality -->
+    <script>
+        // Mobile menu toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', function() {
+                    // Toggle the 'hidden' class on the mobile menu
+                    mobileMenu.classList.toggle('hidden');
+                    
+                    // Toggle the icon
+                    const openIcon = mobileMenuButton.querySelector('svg.block');
+                    const closeIcon = mobileMenuButton.querySelector('svg.hidden');
+                    
+                    if (openIcon && closeIcon) {
+                        openIcon.classList.toggle('hidden');
+                        openIcon.classList.toggle('block');
+                        closeIcon.classList.toggle('hidden');
+                        closeIcon.classList.toggle('block');
+                    }
+                });
+            }
+            
+            // User menu dropdown
             const userMenuButton = document.getElementById('user-menu-button');
-            if (userMenuButton) {
-                userMenuButton.addEventListener('click', function () {
-                    const userMenu = document.getElementById('user-menu');
+            const userMenu = document.getElementById('user-menu');
+            
+            if (userMenuButton && userMenu) {
+                userMenuButton.addEventListener('click', function() {
                     userMenu.classList.toggle('hidden');
                 });
-            }
-
-            // Notification menu toggle
-            const notificationButton = document.getElementById('notification-button');
-            if (notificationButton) {
-                notificationButton.addEventListener('click', function () {
-                    const notificationDropdown = document.getElementById('notification-dropdown');
-                    notificationDropdown.classList.toggle('hidden');
-
-                    // Load notifications via AJAX when opened
-                    if (!notificationDropdown.classList.contains('hidden')) {
-                        loadNotifications();
+                
+                // Close the menu when clicking outside
+                document.addEventListener('click', function(event) {
+                    if (!userMenuButton.contains(event.target) && !userMenu.contains(event.target)) {
+                        userMenu.classList.add('hidden');
                     }
                 });
             }
-
-            // Close dropdowns when clicking outside
-            document.addEventListener('click', function (event) {
-                const userMenu = document.getElementById('user-menu');
-                const userMenuButton = document.getElementById('user-menu-button');
-                const notificationDropdown = document.getElementById('notification-dropdown');
-                const notificationButton = document.getElementById('notification-button');
-
-                if (userMenu && userMenuButton && !userMenuButton.contains(event.target) && !userMenu.contains(event.target)) {
-                    userMenu.classList.add('hidden');
-                }
-
-                if (notificationDropdown && notificationButton && !notificationButton.contains(event.target) && !notificationDropdown.contains(event.target)) {
-                    notificationDropdown.classList.add('hidden');
-                }
-            });
-
-            // Theme toggle functionality
-            const themeToggle = document.getElementById('theme-toggle');
-            const darkIcon = document.getElementById('dark-icon');
-            const lightIcon = document.getElementById('light-icon');
-            const htmlElement = document.documentElement;
-
-            // Check for saved theme preference or use device preference
-            const savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'light') {
-                htmlElement.classList.add('light-mode');
-                darkIcon.classList.add('hidden');
-                lightIcon.classList.remove('hidden');
-            } else {
-                htmlElement.classList.remove('light-mode');
-                darkIcon.classList.remove('hidden');
-                lightIcon.classList.add('hidden');
-            }
-
-            themeToggle.addEventListener('click', function () {
-                if (htmlElement.classList.contains('light-mode')) {
-                    // Switch to dark mode
-                    htmlElement.classList.remove('light-mode');
-                    localStorage.setItem('theme', 'dark');
-                    darkIcon.classList.remove('hidden');
-                    lightIcon.classList.add('hidden');
-                } else {
-                    // Switch to light mode
-                    htmlElement.classList.add('light-mode');
-                    localStorage.setItem('theme', 'light');
-                    darkIcon.classList.add('hidden');
-                    lightIcon.classList.remove('hidden');
-                }
-            });
-
-
-            // Function to load notifications via AJAX
-            function loadNotifications() {
-                const notificationList = document.getElementById('notification-list');
-                if (!notificationList) return;
-
-                // Show loading state
-                notificationList.innerHTML = '<div class="px-4 py-2 text-sm text-gray-400 text-center">Loading notifications...</div>';
-
-                // Make AJAX request
-                fetch('<?php echo $base_url; ?>/api/get_notifications.php')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success && data.notifications.length > 0) {
-                            let notificationsHtml = '';
-
-                            data.notifications.forEach(notification => {
-                                const isUnread = notification.status === 'unread' || notification.is_read === 0;
-                                const unreadClass = isUnread ? 'bg-gray-600' : '';
-
-                                notificationsHtml += `
-                                <a href="${notification.link || '#'}" class="block px-4 py-2 hover:bg-gray-600 ${unreadClass}">
-                                    <div class="flex items-start">
-                                        <div class="flex-shrink-0 pt-0.5">
-                                            <div class="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center">
-                                                <i class="fas fa-bell text-white"></i>
-                                            </div>
-                                        </div>
-                                        <div class="ml-3 w-0 flex-1">
-                                            <p class="text-sm font-medium text-white">${notification.title}</p>
-                                            <p class="text-xs text-gray-400 truncate">${notification.message}</p>
-                                            <p class="text-xs text-gray-500 mt-1">${notification.created_at}</p>
-                                        </div>
-                                        ${isUnread ? '<span class="ml-2 h-2 w-2 rounded-full bg-yellow-500"></span>' : ''}
-                                    </div>
-                                </a>
-                            `;
-                            });
-
-                            notificationList.innerHTML = notificationsHtml;
-                        } else {
-                            notificationList.innerHTML = '<div class="px-4 py-2 text-sm text-gray-400 text-center">No notifications found</div>';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading notifications:', error);
-                        notificationList.innerHTML = '<div class="px-4 py-2 text-sm text-red-400 text-center">Failed to load notifications</div>';
-                    });
-            }
-
-            // Page loader
-            window.addEventListener('load', function () {
-                const loader = document.querySelector('.loader-container');
-                setTimeout(function () {
-                    loader.style.opacity = '0';
-                    setTimeout(function () {
-                        loader.style.display = 'none';
-                    }, 500);
-                }, 500);
-            });
-
-            // Toast notification system
-            function showToast(message, type = 'info', duration = 5000) {
-                const toastContainer = document.getElementById('toast-container');
-                const toast = document.createElement('div');
-
-                // Set toast classes based on type
-                let bgColor, textColor, icon;
-                switch (type) {
-                    case 'success':
-                        bgColor = 'bg-green-500';
-                        textColor = 'text-white';
-                        icon = '<i class="fas fa-check-circle mr-2"></i>';
-                        break;
-                    case 'error':
-                        bgColor = 'bg-red-500';
-                        textColor = 'text-white';
-                        icon = '<i class="fas fa-exclamation-circle mr-2"></i>';
-                        break;
-                    case 'warning':
-                        bgColor = 'bg-yellow-500';
-                        textColor = 'text-white';
-                        icon = '<i class="fas fa-exclamation-triangle mr-2"></i>';
-                        break;
-                    default:
-                        bgColor = 'bg-blue-500';
-                        textColor = 'text-white';
-                        icon = '<i class="fas fa-info-circle mr-2"></i>';
-                }
-
-                toast.className = `${bgColor} ${textColor} p-4 rounded-lg shadow-lg flex items-center justify-between`;
-                toast.style.animation = 'slideIn 0.3s ease-out forwards';
-                toast.innerHTML = `
-                <div class="flex items-center">
-                    ${icon}
-                    <span>${message}</span>
-                </div>
-                <button class="ml-4 text-white focus:outline-none">
-                    <i class="fas fa-times"></i>
-                </button>
-            `;
-
-                // Add to container
-                toastContainer.appendChild(toast);
-
-                // Close button functionality
-                const closeButton = toast.querySelector('button');
-                closeButton.addEventListener('click', () => {
-                    toast.style.animation = 'slideOut 0.3s ease-in forwards';
-                    setTimeout(() => {
-                        toastContainer.removeChild(toast);
-                    }, 300);
+            
+            // Notification dropdown
+            const notificationButton = document.getElementById('notification-button');
+            const notificationDropdown = document.getElementById('notification-dropdown');
+            
+            if (notificationButton && notificationDropdown) {
+                notificationButton.addEventListener('click', function() {
+                    notificationDropdown.classList.toggle('hidden');
                 });
-
-                // Auto-remove after duration
-                setTimeout(() => {
-                    if (toastContainer.contains(toast)) {
-                        toast.style.animation = 'slideOut 0.3s ease-in forwards';
+                
+                // Close the dropdown when clicking outside
+                document.addEventListener('click', function(event) {
+                    if (!notificationButton.contains(event.target) && !notificationDropdown.contains(event.target)) {
+                        notificationDropdown.classList.add('hidden');
+                    }
+                });
+            }
+            
+            // Theme toggle functionality
+            const themeToggleBtn = document.getElementById('theme-toggle');
+            const darkIcon = document.getElementById('theme-toggle-dark-icon');
+            const lightIcon = document.getElementById('theme-toggle-light-icon');
+            
+            if (themeToggleBtn && darkIcon && lightIcon) {
+                themeToggleBtn.addEventListener('click', function() {
+                    // Toggle icons
+                    darkIcon.classList.toggle('hidden');
+                    lightIcon.classList.toggle('hidden');
+                    
+                    // Toggle theme
+                    const htmlElement = document.documentElement;
+                    const currentTheme = htmlElement.getAttribute('data-theme');
+                    
+                    if (currentTheme === 'dark') {
+                        htmlElement.setAttribute('data-theme', 'light');
+                        localStorage.setItem('theme', 'light');
+                    } else {
+                        htmlElement.setAttribute('data-theme', 'dark');
+                        localStorage.setItem('theme', 'dark');
+                    }
+                    
+                    // Apply theme changes
+                    applyTheme();
+                });
+            }
+            
+            // Flash message close buttons
+            const closeButtons = document.querySelectorAll('.close-flash');
+            closeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const flashMessage = this.closest('.flash-message');
+                    if (flashMessage) {
+                        flashMessage.style.opacity = '0';
                         setTimeout(() => {
-                            if (toastContainer.contains(toast)) {
-                                toastContainer.removeChild(toast);
-                            }
+                            flashMessage.style.display = 'none';
                         }, 300);
                     }
-                }, duration);
+                });
+            });
+            
+            // Auto-hide flash messages after 5 seconds
+            const flashMessages = document.querySelectorAll('.flash-message');
+            flashMessages.forEach(message => {
+                setTimeout(() => {
+                    message.style.opacity = '0';
+                    setTimeout(() => {
+                        message.style.display = 'none';
+                    }, 300);
+                }, 5000);
+            });
+            
+            // Hide page loader when page is fully loaded
+            const pageLoader = document.getElementById('page-loader');
+            if (pageLoader) {
+                window.addEventListener('load', function() {
+                    pageLoader.style.opacity = '0';
+                    setTimeout(() => {
+                        pageLoader.style.display = 'none';
+                    }, 300);
+                });
             }
+        });
+        
+        // Function to apply theme
+        function applyTheme() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            
+            // Update theme toggle icons
+            const darkIcon = document.getElementById('theme-toggle-dark-icon');
+            const lightIcon = document.getElementById('theme-toggle-light-icon');
+            
+            if (darkIcon && lightIcon) {
+                if (theme === 'dark') {
+                    darkIcon.classList.add('hidden');
+                    lightIcon.classList.remove('hidden');
+                } else {
+                    darkIcon.classList.remove('hidden');
+                    lightIcon.classList.add('hidden');
+                }
+            }
+        }
+        
+        // Apply theme on page load
+        applyTheme();
+    </script>
 
-            // Example of how to use the toast:
-            // showToast('This is a success message', 'success');
-            // showToast('This is an error message', 'error');
-            // showToast('This is a warning message', 'warning');
-            // showToast('This is an info message', 'info');
-        </script>
-    </body>
 
-</html>
+

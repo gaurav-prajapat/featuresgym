@@ -4,11 +4,6 @@ require 'config/database.php';
 include 'includes/navbar.php';
 
 
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit;
-}
-
 $user_id = $_SESSION['user_id'];
 $db = new GymDatabase();
 $conn = $db->getConnection();

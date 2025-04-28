@@ -1,9 +1,9 @@
 <?php
 ob_start();
-include '../includes/navbar.php';
+session_start();
 
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -375,12 +375,14 @@ $payment_methods = $stmt->fetchAll(PDO::FETCH_COLUMN);
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
-    <div class="container mx-auto px-4 py-8 flex-grow">
+<body class="bg-gray-900 text-white">
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Payment Management</h1>
+                <h1 class="text-3xl font-bold ">Payment Management</h1>
                 <p class="text-gray-600">View and manage all payment transactions</p>
             </div>
             <div class="mt-4 md:mt-0 flex space-x-3">
@@ -925,21 +927,7 @@ $payment_methods = $stmt->fetchAll(PDO::FETCH_COLUMN);
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="bg-white py-6 mt-auto no-print">
-        <div class="container mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-sm text-gray-600">&copy; <?= date('Y') ?> Fitness Hub. All rights reserved.</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="privacy_policy.php" class="text-sm text-gray-600 hover:text-indigo-600">Privacy Policy</a>
-                    <a href="terms_of_service.php" class="text-sm text-gray-600 hover:text-indigo-600">Terms of Service</a>
-                    <a href="contact.php" class="text-sm text-gray-600 hover:text-indigo-600">Contact Us</a>
-                </div>
-            </div>
-        </div>
-    </footer>
+
 
     <script>
         // Show status change modal

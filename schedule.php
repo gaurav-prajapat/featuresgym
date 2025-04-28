@@ -37,6 +37,7 @@ $membershipsStmt = $conn->prepare("
         g.address,
         g.city,
         g.cover_photo,
+        g.capacity,
         (SELECT COUNT(*) FROM schedules WHERE membership_id = um.id) as used_days,
         CASE 
             WHEN gmp.duration = 'Daily' THEN DATEDIFF(um.end_date, um.start_date) + 1
@@ -79,18 +80,36 @@ if (!$selectedMembership) {
 
 $gym_id = $selectedMembership['gym_id'];
 
+// Get system settings for commission rates
+$settingsStmt = $conn->prepare("
+    SELECT setting_key, setting_value 
+    FROM system_settings 
+    WHERE setting_group = 'commission' 
+    AND setting_key IN ('admin_commission_rate', 'gym_commission_rate')
+");
+$settingsStmt->execute();
+$settings = $settingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Default commission rates if not set
+$adminCommissionRate = isset($settings['admin_commission_rate']) ? 
+    (float)$settings['admin_commission_rate'] : 30.00;
+$gymCommissionRate = isset($settings['gym_commission_rate']) ? 
+    (float)$settings['gym_commission_rate'] : 70.00;
+
 // Get gym operating hours
 $hoursStmt = $conn->prepare("
     SELECT 
         day,
-        morning_open_time, 
-        morning_close_time, 
-        evening_open_time, 
-        evening_close_time
+        TIME_FORMAT(morning_open_time, '%H:%i:%s') as morning_open_time, 
+        TIME_FORMAT(morning_close_time, '%H:%i:%s') as morning_close_time, 
+        TIME_FORMAT(evening_open_time, '%H:%i:%s') as evening_open_time, 
+        TIME_FORMAT(evening_close_time, '%H:%i:%s') as evening_close_time,
+        is_closed
     FROM gym_operating_hours 
     WHERE gym_id = ? AND (day = 'Daily' OR day = ?)
     ORDER BY CASE WHEN day = 'Daily' THEN 0 ELSE 1 END
 ");
+
 
 // Get the day of the week for the selected date (default to today)
 $selectedDate = $_GET['date'] ?? date('Y-m-d');
@@ -102,14 +121,17 @@ $hours = $hoursStmt->fetch(PDO::FETCH_ASSOC);
 // If no specific day is found, try to get the 'Daily' schedule
 if (!$hours) {
     $hoursStmt = $conn->prepare("
-        SELECT 
-            morning_open_time, 
-            morning_close_time, 
-            evening_open_time, 
-            evening_close_time
-        FROM gym_operating_hours 
-        WHERE gym_id = ? AND day = 'Daily'
-    ");
+    SELECT 
+        day,
+        TIME_FORMAT(morning_open_time, '%H:%i:%s') as morning_open_time, 
+        TIME_FORMAT(morning_close_time, '%H:%i:%s') as morning_close_time, 
+        TIME_FORMAT(evening_open_time, '%H:%i:%s') as evening_open_time, 
+        TIME_FORMAT(evening_close_time, '%H:%i:%s') as evening_close_time,
+        is_closed
+    FROM gym_operating_hours 
+    WHERE gym_id = ? AND (day = 'Daily' OR day = ?)
+    ORDER BY CASE WHEN day = 'Daily' THEN 0 ELSE 1 END
+");
     $hoursStmt->execute([$gym_id]);
     $hours = $hoursStmt->fetch(PDO::FETCH_ASSOC);
 }
@@ -161,15 +183,14 @@ $occupancyStmt = $conn->prepare("
     FROM schedules 
     WHERE gym_id = ? 
     AND start_date = ?
+    AND status != 'cancelled'
     GROUP BY start_time
 ");
 $occupancyStmt->execute([$gym_id, $selectedDate]);
 $occupancyByTime = $occupancyStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
 // Get gym capacity
-$capacityStmt = $conn->prepare("SELECT capacity FROM gyms WHERE gym_id = ?");
-$capacityStmt->execute([$gym_id]);
-$gymCapacity = $capacityStmt->fetchColumn() ?: 50; // Default to 50 if not set
+$gymCapacity = $selectedMembership['capacity'] ?: 50; // Default to 50 if not set
 
 // Check if user already has a booking for the selected date at the selected gym
 $existingBookingStmt = $conn->prepare("
@@ -178,6 +199,7 @@ $existingBookingStmt = $conn->prepare("
     WHERE user_id = ? 
     AND gym_id = ? 
     AND start_date = ?
+    AND status != 'cancelled'
 ");
 $existingBookingStmt->execute([$user_id, $gym_id, $selectedDate]);
 $hasExistingBooking = $existingBookingStmt->fetchColumn() > 0;
@@ -225,13 +247,30 @@ $activityTypes = [
 
 // Get available classes for this gym
 $classesStmt = $conn->prepare("
-    SELECT id, name, description, instructor, capacity, current_bookings
+    SELECT id, name, description, instructor, capacity, current_bookings, schedule
     FROM gym_classes
     WHERE gym_id = ? AND status = 'active'
     ORDER BY name
 ");
 $classesStmt->execute([$gym_id]);
 $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get cut-off information based on tier
+$cutOffStmt = $conn->prepare("
+    SELECT admin_cut_percentage, gym_owner_cut_percentage
+    FROM cut_off_chart
+    WHERE tier = ? AND duration = ?
+");
+$cutOffStmt->execute([$selectedMembership['tier'], $selectedMembership['duration']]);
+$cutOffData = $cutOffStmt->fetch(PDO::FETCH_ASSOC);
+
+// If no specific cut-off is found, use the system default
+if (!$cutOffData) {
+    $cutOffData = [
+        'admin_cut_percentage' => $adminCommissionRate,
+        'gym_owner_cut_percentage' => $gymCommissionRate
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -393,8 +432,8 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
             }
         }
         
-               /* Responsive adjustments */
-               @media (max-width: 640px) {
+        /* Responsive adjustments */
+        @media (max-width: 640px) {
             .time-slot-item {
                 min-height: 60px;
                 padding: 0.5rem;
@@ -538,6 +577,20 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
                     </a>
                 </div>
             </div>
+            
+            <!-- Commission Information -->
+            <div class="mt-4 p-3 bg-gray-700 rounded-lg">
+                <h3 class="text-sm font-semibold text-yellow-400 mb-1">Revenue Distribution</h3>
+                <div class="flex items-center">
+                    <div class="w-full bg-gray-600 rounded-full h-2.5">
+                        <div class="bg-yellow-500 h-2.5 rounded-full" style="width: <?= $cutOffData['gym_owner_cut_percentage'] ?>%"></div>
+                    </div>
+                    <div class="ml-3 text-xs text-gray-300">
+                        <span class="text-yellow-400 font-medium"><?= $cutOffData['gym_owner_cut_percentage'] ?>%</span> gym / 
+                        <span class="text-blue-400 font-medium"><?= $cutOffData['admin_cut_percentage'] ?>%</span> platform
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Scheduling Form -->
@@ -630,206 +683,229 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
                                         } else {
                                             $bgColor = 'bg-green-800 hover:bg-green-700';
                                         }
-                                    ?>
-                                        <div class="time-slot-item <?= $bgColor ?> <?= !$isAvailable ? 'disabled' : '' ?>" 
-                                             data-time="<?= $timeSlot ?>"
-                                             onclick="<?= $isAvailable ? 'selectTimeSlot(this)' : '' ?>">
-                                            <span class="text-lg font-bold"><?= $formattedTime ?></span>
-                                            <div class="mt-1 text-xs">
-                                                <span><?= $currentOccupancy ?>/<?= $gymCapacity ?></span>
-                                                <span class="ml-1"><?= $isAvailable ? 'Available' : 'Full' ?></span>
+                                        ?>
+                                            <div class="time-slot-item <?= $bgColor ?> <?= !$isAvailable ? 'disabled' : '' ?>" 
+                                                 data-time="<?= $timeSlot ?>"
+                                                 onclick="<?= $isAvailable ? 'selectTimeSlot(this)' : '' ?>">
+                                                <span class="text-lg font-bold"><?= $formattedTime ?></span>
+                                                <div class="mt-1 text-xs">
+                                                    <span><?= $currentOccupancy ?>/<?= $gymCapacity ?></span>
+                                                    <span class="ml-1"><?= $isAvailable ? 'Available' : 'Full' ?></span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                                <input type="hidden" id="selected_time" name="start_time" required>
-                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <input type="hidden" id="selected_time" name="start_time" required>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <!-- Class Activity Content -->
-                    <div id="class" class="activity-content">
-                        <div class="mb-6">
-                            <label for="class_id" class="block text-gray-300 mb-2 font-medium">Select Class</label>
-                            <?php if (empty($availableClasses)): ?>
-                                <div class="bg-gray-700 p-4 rounded-lg text-center">
-                                    <p class="text-gray-400">No classes available at this gym. Please select a different activity type.</p>
-                                </div>
-                            <?php else: ?>
-                                <select id="class_id" name="class_id" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
-                                    <option value="">Select a class...</option>
-                                    <?php foreach ($availableClasses as $class): ?>
-                                        <option value="<?= $class['id'] ?>">
-                                            <?= htmlspecialchars($class['name']) ?> - 
-                                            Instructor: <?= htmlspecialchars($class['instructor']) ?> 
-                                            (<?= $class['current_bookings'] ?>/<?= $class['capacity'] ?> spots)
-                                        </option>
+                        
+                        <!-- Class Activity Content -->
+                        <div id="class" class="activity-content">
+                            <div class="mb-6">
+                                <label for="class_id" class="block text-gray-300 mb-2 font-medium">Select Class</label>
+                                <?php if (empty($availableClasses)): ?>
+                                    <div class="bg-gray-700 p-4 rounded-lg text-center">
+                                        <p class="text-gray-400">No classes available at this gym. Please select a different activity type.</p>
+                                    </div>
+                                <?php else: ?>
+                                    <select id="class_id" name="class_id" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
+                                        <option value="">Select a class...</option>
+                                        <?php foreach ($availableClasses as $class): ?>
+                                            <option value="<?= $class['id'] ?>">
+                                                <?= htmlspecialchars($class['name']) ?> - 
+                                                Instructor: <?= htmlspecialchars($class['instructor']) ?> 
+                                                (<?= $class['current_bookings'] ?>/<?= $class['capacity'] ?> spots)
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div id="class_details" class="mt-3 p-4 bg-gray-700 rounded-lg hidden">
+                                        <h4 id="class_name" class="font-bold text-white"></h4>
+                                        <p id="class_description" class="text-gray-300 text-sm mt-1"></p>
+                                        <div class="flex justify-between mt-2">
+                                            <span id="class_instructor" class="text-yellow-400 text-sm"></span>
+                                            <span id="class_capacity" class="text-gray-300 text-sm"></span>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label for="class_date" class="block text-gray-300 mb-2 font-medium">Select Date</label>
+                                <input type="date" id="class_date" name="class_date" 
+                                       min="<?= date('Y-m-d') ?>" 
+                                       max="<?= date('Y-m-d', strtotime('+30 days')) ?>" 
+                                       value="<?= $selectedDate ?>" 
+                                       class="w-full" required>
+                            </div>
+                        </div>
+                        
+                        <!-- Personal Training Activity Content -->
+                        <div id="personal_training" class="activity-content">
+                            <div class="bg-gray-700 p-4 rounded-lg mb-6">
+                                <p class="text-gray-300">
+                                    <i class="fas fa-info-circle mr-2 text-yellow-500"></i>
+                                    Personal training sessions require a trainer to be available. Select a date and time, and we'll match you with an available trainer.
+                                </p>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label for="training_date" class="block text-gray-300 mb-2 font-medium">Select Date</label>
+                                <input type="date" id="training_date" name="training_date" 
+                                       min="<?= date('Y-m-d') ?>" 
+                                       max="<?= date('Y-m-d', strtotime('+30 days')) ?>" 
+                                       value="<?= $selectedDate ?>" 
+                                       class="w-full" >
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label for="training_time" class="block text-gray-300 mb-2 font-medium">Select Time</label>
+                                <select id="training_time" name="training_time" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500" >
+                                    <option value="">Select a time...</option>
+                                    <?php foreach ($timeSlots as $timeSlot): 
+                                        $formattedTime = date('h:i A', strtotime($timeSlot));
+                                    ?>
+                                        <option value="<?= $timeSlot ?>"><?= $formattedTime ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div id="class_details" class="mt-3 p-4 bg-gray-700 rounded-lg hidden">
-                                    <h4 id="class_name" class="font-bold text-white"></h4>
-                                    <p id="class_description" class="text-gray-300 text-sm mt-1"></p>
-                                    <div class="flex justify-between mt-2">
-                                        <span id="class_instructor" class="text-yellow-400 text-sm"></span>
-                                        <span id="class_capacity" class="text-gray-300 text-sm"></span>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <label for="training_focus" class="block text-gray-300 mb-2 font-medium">Training Focus</label>
+                                <select id="training_focus" name="training_focus" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
+                                    <option value="general">General Fitness</option>
+                                    <option value="strength">Strength Training</option>
+                                    <option value="cardio">Cardio & Endurance</option>
+                                    <option value="flexibility">Flexibility & Mobility</option>
+                                    <option value="weight_loss">Weight Loss</option>
+                                    <option value="muscle_gain">Muscle Gain</option>
+                                </select>
+                            </div>
                         </div>
                         
+                        <!-- Common Fields for All Activity Types -->
                         <div class="mb-6">
-                            <label for="class_date" class="block text-gray-300 mb-2 font-medium">Select Date</label>
-                            <input type="date" id="class_date" name="class_date" 
-                                   min="<?= date('Y-m-d') ?>" 
-                                   max="<?= date('Y-m-d', strtotime('+30 days')) ?>" 
-                                   value="<?= $selectedDate ?>" 
-                                   class="w-full" required>
-                        </div>
-                    </div>
-                    
-                    <!-- Personal Training Activity Content -->
-                    <div id="personal_training" class="activity-content">
-                        <div class="bg-gray-700 p-4 rounded-lg mb-6">
-                            <p class="text-gray-300">
-                                <i class="fas fa-info-circle mr-2 text-yellow-500"></i>
-                                Personal training sessions require a trainer to be available. Select a date and time, and we'll match you with an available trainer.
-                            </p>
-                        </div>
-                        
-                        <div class="mb-6">
-                            <label for="training_date" class="block text-gray-300 mb-2 font-medium">Select Date</label>
-                            <input type="date" id="training_date" name="training_date" 
-                                   min="<?= date('Y-m-d') ?>" 
-                                   max="<?= date('Y-m-d', strtotime('+30 days')) ?>" 
-                                   value="<?= $selectedDate ?>" 
-                                   class="w-full" required>
-                        </div>
-                        
-                        <div class="mb-6">
-                            <label for="training_time" class="block text-gray-300 mb-2 font-medium">Select Time</label>
-                            <select id="training_time" name="training_time" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500" required>
-                                <option value="">Select a time...</option>
-                                <?php foreach ($timeSlots as $timeSlot): 
-                                    $formattedTime = date('h:i A', strtotime($timeSlot));
-                                ?>
-                                    <option value="<?= $timeSlot ?>"><?= $formattedTime ?></option>
+                            <label for="activity_type" class="block text-gray-300 mb-2 font-medium">Activity Type</label>
+                            <select id="activity_type" name="activity_type" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500" required>
+                                <?php foreach ($activityTypes as $value => $label): ?>
+                                    <option value="<?= $value ?>" <?= $value === 'gym_visit' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         
+                        <!-- Recurring Options -->
                         <div class="mb-6">
-                            <label for="training_focus" class="block text-gray-300 mb-2 font-medium">Training Focus</label>
-                            <select id="training_focus" name="training_focus" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
-                                <option value="general">General Fitness</option>
-                                <option value="strength">Strength Training</option>
-                                <option value="cardio">Cardio & Endurance</option>
-                                <option value="flexibility">Flexibility & Mobility</option>
-                                <option value="weight_loss">Weight Loss</option>
-                                <option value="muscle_gain">Muscle Gain</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <!-- Common Fields for All Activity Types -->
-                    <div class="mb-6">
-                        <label for="activity_type" class="block text-gray-300 mb-2 font-medium">Activity Type</label>
-                        <select id="activity_type" name="activity_type" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500" required>
-                            <?php foreach ($activityTypes as $value => $label): ?>
-                                <option value="<?= $value ?>" <?= $value === 'gym_visit' ? 'selected' : '' ?>><?= $label ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    
-                    <!-- Recurring Options -->
-                    <div class="mb-6">
-                        <div class="flex items-center">
-                            <input type="checkbox" id="is_recurring" name="is_recurring" class="h-4 w-4 text-yellow-500 focus:ring-yellow-500 border-gray-600 rounded">
-                            <label for="is_recurring" class="ml-2 block text-gray-300 font-medium">Make this a recurring booking</label>
-                        </div>
-                        
-                        <div id="recurring_options" class="mt-4 p-4 bg-gray-700 rounded-lg recurring-options">
-                            <div class="mb-4">
-                                <label for="recurring_type" class="block text-gray-300 mb-2 font-medium">Recurrence Pattern</label>
-                                <select id="recurring_type" name="recurring" class="w-full bg-gray-600 border border-gray-500 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
-                                    <option value="none">None</option>
-                                    <option value="daily">Daily</option>
-                                    <option value="weekly">Weekly</option>
-                                    <option value="monthly">Monthly</option>
-                                </select>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="is_recurring" name="is_recurring" class="h-4 w-4 text-yellow-500 focus:ring-yellow-500 border-gray-600 rounded">
+                                <label for="is_recurring" class="ml-2 block text-gray-300 font-medium">Make this a recurring booking</label>
                             </div>
                             
-                            <div id="days_of_week_container" class="mb-4 hidden">
-                                <label class="block text-gray-300 mb-2 font-medium">Days of Week</label>
-                                <div class="flex flex-wrap">
-                                    <?php 
-                                    $daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                                    foreach ($daysOfWeek as $index => $day): 
-                                    ?>
-                                        <div>
-                                            <input type="checkbox" id="day_<?= $index ?>" name="days_of_week[]" value="<?= $index + 1 ?>" class="day-checkbox">
-                                            <label for="day_<?= $index ?>" class="day-label"><?= $day ?></label>
-                                        </div>
-                                    <?php endforeach; ?>
+                            <div id="recurring_options" class="mt-4 p-4 bg-gray-700 rounded-lg recurring-options">
+                                <div class="mb-4">
+                                    <label for="recurring_type" class="block text-gray-300 mb-2 font-medium">Recurrence Pattern</label>
+                                    <select id="recurring_type" name="recurring" class="w-full bg-gray-600 border border-gray-500 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
+                                        <option value="none">None</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                                
+                                <div id="days_of_week_container" class="mb-4 hidden">
+                                    <label class="block text-gray-300 mb-2 font-medium">Days of Week</label>
+                                    <div class="flex flex-wrap">
+                                        <?php 
+                                        $daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                                        foreach ($daysOfWeek as $index => $day): 
+                                        ?>
+                                            <div>
+                                                <input type="checkbox" id="day_<?= $index ?>" name="days_of_week[]" value="<?= $index + 1 ?>" class="day-checkbox">
+                                                <label for="day_<?= $index ?>" class="day-label"><?= $day ?></label>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="recurring_until" class="block text-gray-300 mb-2 font-medium">Repeat Until</label>
+                                    <input type="date" id="recurring_until" name="recurring_until" 
+                                           min="<?= date('Y-m-d', strtotime('+1 day')) ?>" 
+                                           max="<?= date('Y-m-d', strtotime('+90 days')) ?>" 
+                                           value="<?= date('Y-m-d', strtotime('+30 days')) ?>" 
+                                           class="w-full bg-gray-600 border border-gray-500 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
+                                </div>
+                                
+                                <div class="text-sm text-gray-400">
+                                    <p><i class="fas fa-info-circle mr-1"></i> Recurring bookings will be created based on your selected pattern until the end date.</p>
+                                    <p class="mt-1"><i class="fas fa-exclamation-triangle mr-1 text-yellow-500"></i> Each recurring booking counts as a separate visit for daily passes.</p>
                                 </div>
                             </div>
-                            
-                            <div class="mb-4">
-                                <label for="recurring_until" class="block text-gray-300 mb-2 font-medium">Repeat Until</label>
-                                <input type="date" id="recurring_until" name="recurring_until" 
-                                       min="<?= date('Y-m-d', strtotime('+1 day')) ?>" 
-                                       max="<?= date('Y-m-d', strtotime('+90 days')) ?>" 
-                                       value="<?= date('Y-m-d', strtotime('+30 days')) ?>" 
-                                       class="w-full bg-gray-600 border border-gray-500 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
-                            </div>
-                            
-                            <div class="text-sm text-gray-400">
-                                <p><i class="fas fa-info-circle mr-1"></i> Recurring bookings will be created based on your selected pattern until the end date.</p>
-                                <p class="mt-1"><i class="fas fa-exclamation-triangle mr-1 text-yellow-500"></i> Each recurring booking counts as a separate visit for daily passes.</p>
+                        </div>
+                        
+                        <!-- Notes -->
+                        <div class="mb-6">
+                            <label for="notes" class="block text-gray-300 mb-2 font-medium">Notes (Optional)</label>
+                            <textarea id="notes" name="notes" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500" placeholder="Any special requests or notes for your visit..."></textarea>
+                        </div>
+                        
+                        <!-- End Date (Same as Start Date for single visits) -->
+                        <input type="hidden" id="end_date" name="end_date" value="<?= $selectedDate ?>">
+                        
+                        <!-- Revenue Distribution Info -->
+                        <div class="mb-6 p-4 bg-gray-700 rounded-lg">
+                            <h3 class="text-lg font-semibold text-white mb-2">Booking Summary</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Daily Rate:</p>
+                                    <p class="text-yellow-400 font-semibold">₹<?= number_format($dailyRate, 2) ?></p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400 text-sm">Admin Commission (<?= $cutOffData['admin_cut_percentage'] ?>%):</p>
+                                    <p class="text-blue-400 font-semibold">₹<?= number_format($dailyRate * ($cutOffData['admin_cut_percentage'] / 100), 2) ?></p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400 text-sm">Gym Revenue (<?= $cutOffData['gym_owner_cut_percentage'] ?>%):</p>
+                                    <p class="text-green-400 font-semibold">₹<?= number_format($dailyRate * ($cutOffData['gym_owner_cut_percentage'] / 100), 2) ?></p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400 text-sm">Membership Tier:</p>
+                                    <p class="text-white font-semibold"><?= htmlspecialchars($selectedMembership['tier']) ?></p>
+                                </div>
                             </div>
                         </div>
+                        
+                        <!-- Submit Button -->
+                        <div class="flex justify-end">
+                            <button type="submit" id="scheduleBtn" class="btn-primary" disabled>
+                                <i class="fas fa-calendar-check mr-2"></i> Schedule Workout
+                            </button>
+                        </div>
+                    </form>
+                <?php endif; ?>
+            </div>
+            
+            <!-- Information Card -->
+            <div class="mt-8 bg-gray-800 rounded-lg p-6 shadow-lg">
+                <h3 class="text-xl font-bold text-white mb-4">Scheduling Information</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="text-lg font-semibold text-yellow-400 mb-2">Booking Rules</h4>
+                        <ul class="list-disc list-inside text-gray-300 space-y-2">
+                            <li>You can only book one time slot per day at each gym</li>
+                            <li>Bookings must be made at least 1 hour in advance</li>
+                            <li>For daily passes, each booking counts as one day of usage</li>
+                            <li>Cancellations must be made at least 4 hours before the scheduled time</li>
+                            <li>Recurring bookings will create multiple schedule entries</li>
+                        </ul>
                     </div>
-                    
-                    <!-- Notes -->
-                    <div class="mb-6">
-                        <label for="notes" class="block text-gray-300 mb-2 font-medium">Notes (Optional)</label>
-                        <textarea id="notes" name="notes" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-yellow-500" placeholder="Any special requests or notes for your visit..."></textarea>
-                    </div>
-                    
-                    <!-- End Date (Same as Start Date for single visits) -->
-                    <input type="hidden" id="end_date" name="end_date" value="<?= $selectedDate ?>">
-                    
-                    <!-- Submit Button -->
-                    <div class="flex justify-end">
-                        <button type="submit" id="scheduleBtn" class="btn-primary" disabled>
-                            <i class="fas fa-calendar-check mr-2"></i> Schedule Workout
-                        </button>
-                    </div>
-                </form>
-            <?php endif; ?>
-        </div>
-        
-        <!-- Information Card -->
-        <div class="mt-8 bg-gray-800 rounded-lg p-6 shadow-lg">
-            <h3 class="text-xl font-bold text-white mb-4">Scheduling Information</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <h4 class="text-lg font-semibold text-yellow-400 mb-2">Booking Rules</h4>
-                    <ul class="list-disc list-inside text-gray-300 space-y-2">
-                        <li>You can only book one time slot per day at each gym</li>
-                        <li>Bookings must be made at least 1 hour in advance</li>
-                        <li>For daily passes, each booking counts as one day of usage</li>
-                        <li>Cancellations must be made at least 4 hours before the scheduled time</li>
-                        <li>Recurring bookings will create multiple schedule entries</li>
-                    </ul>
-                </div>
-                <div>
-                    <h4 class="text-lg font-semibold text-yellow-400 mb-2">Activity Types</h4>
-                    <ul class="space-y-2">
-                        <li class="flex items-start">
-                            <i class="fas fa-dumbbell text-yellow-500 mt-1 mr-2"></i>
-                            <span class="text-gray-300"><strong>Gym Visit:</strong> Regular access to gym facilities and equipment</span>
-                        </li>
-                        <li class="flex items-start">
+                    <div>
+                        <h4 class="text-lg font-semibold text-yellow-400 mb-2">Activity Types</h4>
+                        <ul class="space-y-2">
+                            <li class="flex items-start">
+                                <i class="fas fa-dumbbell text-yellow-500 mt-1 mr-2"></i>
+                                <span class="text-gray-300"><strong>Gym Visit:</strong> Regular access to gym facilities and equipment</span>
+                            </li>
+                            <li class="flex items-start">
                             <i class="fas fa-users text-yellow-500 mt-1 mr-2"></i>
                             <span class="text-gray-300"><strong>Fitness Class:</strong> Group classes led by instructors</span>
                         </li>
@@ -843,6 +919,22 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
     
+    <!-- Toast Notification -->
+    <div id="toast" class="toast bg-red-900 text-white">
+        <div class="flex items-center">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-xl"></i>
+            </div>
+            <div class="ml-3">
+                <p id="toastMessage" class="text-sm font-medium"></p>
+            </div>
+            <div class="ml-auto pl-3">
+                <button type="button" onclick="hideToast()" class="text-white hover:text-gray-300">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // Variables
@@ -925,8 +1017,9 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Add active class to clicked tab
             tabElement.classList.add('active');
-                        // Hide all content sections
-                        document.querySelectorAll('.activity-content').forEach(content => {
+            
+            // Hide all content sections
+            document.querySelectorAll('.activity-content').forEach(content => {
                 content.classList.remove('active');
             });
             
@@ -936,6 +1029,21 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Update the activity type select field
             document.getElementById('activity_type').value = targetId;
+
+            const trainingTimeSelect = document.getElementById('training_time');
+    const classIdSelect = document.getElementById('class_id');
+    const selectedTimeInput = document.getElementById('selected_time');
+    
+    // Remove required from all
+    trainingTimeSelect.removeAttribute('required');
+    classIdSelect.removeAttribute('required');
+    
+    // Add required only to the active tab's inputs
+    if (targetId === 'personal_training') {
+        trainingTimeSelect.setAttribute('required', 'required');
+    } else if (targetId === 'class') {
+        classIdSelect.setAttribute('required', 'required');
+    }
             
             // Reset the schedule button state
             const scheduleBtn = document.getElementById('scheduleBtn');
@@ -1007,7 +1115,7 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
             const scheduleForm = document.getElementById('scheduleForm');
             if (scheduleForm) {
                 scheduleForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
+                    
                     
                     const activityType = document.getElementById('activity_type').value;
                     let isValid = true;
@@ -1185,11 +1293,9 @@ $availableClasses = $classesStmt->fetchAll(PDO::FETCH_ASSOC);
         // Call on load and resize
         window.addEventListener('load', adjustTimeSlotGrid);
         window.addEventListener('resize', adjustTimeSlotGrid);
-
-        
     </script>
 </body>
 </html>
 
-
+    
 

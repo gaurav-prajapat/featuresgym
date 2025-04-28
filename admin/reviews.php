@@ -1,5 +1,5 @@
 <?php
-include '../includes/navbar.php';
+session_start();
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: /gym/views/auth/login.php');
@@ -20,8 +20,20 @@ $stmt = $conn->query("
 $reviews = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 ?>
-
-<div class="container mx-auto px-4 py-8">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Gyms - FlexFit Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+</head>
+<body class="bg-gray-900 text-white">
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
     <h1 class="text-2xl font-bold mb-6">Manage Reviews</h1>
 
     <div class="bg-white shadow-md rounded">

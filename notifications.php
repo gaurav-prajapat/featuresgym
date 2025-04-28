@@ -12,6 +12,20 @@ $user_id = $_SESSION['user_id'];
 $db = new GymDatabase();
 $conn = $db->getConnection();
 
+// Get timezone setting from system_settings
+try {
+    $timezoneStmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'default_timezone'");
+    $timezoneStmt->execute();
+    $timezone = $timezoneStmt->fetchColumn() ?: 'Asia/Kolkata'; // Default to Asia/Kolkata if not found
+    
+    // Set the timezone
+    date_default_timezone_set($timezone);
+} catch (PDOException $e) {
+    // If there's an error, default to Asia/Kolkata
+    date_default_timezone_set('Asia/Kolkata');
+    error_log("Error fetching timezone setting: " . $e->getMessage());
+}
+
 // Initialize variables
 $notifications = [];
 $error_message = '';
@@ -137,56 +151,149 @@ try {
 include 'includes/navbar.php';
 ?>
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications - FeaturesGym</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Custom animation for unread notifications */
+        @keyframes pulseOnce {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        .animate-pulse-once {
+            animation: pulseOnce 1s ease-in-out;
+        }
+        
+        /* Smooth transitions */
+        .notification-item {
+            transition: all 0.3s ease;
+        }
+        
+        /* Fade out animation */
+        .fade-out {
+            opacity: 0;
+            transform: translateX(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            .notification-actions {
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 0.5rem;
+            }
+            
+            .notification-badge {
+                font-size: 0.65rem;
+                padding: 0.15rem 0.4rem;
+            }
+            
+            .notification-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            
+            .notification-timestamp {
+                margin-left: 0;
+                width: 100%;
+                text-align: left;
+            }
+        }
+        
+        /* Improved filter dropdown */
+        .filter-dropdown {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .filter-dropdown.show {
+            max-height: 400px;
+        }
+        
+        /* Improved pagination */
+        .pagination-item {
+            transition: all 0.2s ease;
+        }
+        
+        .pagination-item:hover:not(.active) {
+            transform: translateY(-2px);
+        }
+        
+        /* Skeleton loading animation */
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        
+        .skeleton {
+            background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite;
+        }
+    </style>
+</head>
+<body>
+
 <div class="min-h-screen bg-gradient-to-b from-gray-900 to-black pt-24 pb-12 sm:py-16 lg:py-20">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
             <h1 class="text-3xl font-bold text-white">Notifications</h1>
             
-            <div class="flex space-x-2">
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                 <?php if ($unread_count > 0): ?>
-                <form method="post" action="notifications.php?page=<?= $page ?>&filter=<?= $filter ?>">
+                <form method="post" action="notifications.php?page=<?= $page ?>&filter=<?= $filter ?>" class="w-full sm:w-auto">
                     <input type="hidden" name="mark_all_read" value="1">
-                    <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg transition-colors duration-200 font-medium text-sm">
-                        Mark All as Read
+                    <button type="submit" class="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg transition-colors duration-200 font-medium text-sm">
+                        <i class="fas fa-check-double mr-2"></i> Mark All as Read
                     </button>
                 </form>
                 <?php endif; ?>
                 
-                <div class="relative">
-                    <button id="filterDropdown" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 font-medium text-sm flex items-center">
-                        <i class="fas fa-filter mr-2"></i> Filter
-                        <i class="fas fa-chevron-down ml-2"></i>
+                <div class="relative w-full sm:w-auto">
+                    <button id="filterDropdown" class="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 font-medium text-sm flex items-center justify-between">
+                        <span><i class="fas fa-filter mr-2"></i> Filter</span>
+                        <i class="fas fa-chevron-down ml-2 transition-transform duration-200"></i>
                     </button>
-                    <div id="filterMenu" class="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg z-10 hidden">
+                    <div id="filterMenu" class="filter-dropdown absolute right-0 mt-2 w-full sm:w-64 bg-gray-800 rounded-lg shadow-lg z-10 overflow-hidden">
                         <div class="py-1">
                             <a href="notifications.php?filter=all" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'all' ? 'bg-gray-700' : '' ?>">
                                 All Notifications
-                                <span class="float-right bg-gray-600 text-xs px-2 py-1 rounded-full"><?= $total_notifications ?></span>
+                                <span class="float-right bg-gray-600 text-xs px-2 py-1 rounded-full notification-badge"><?= $total_notifications ?></span>
                             </a>
                             <a href="notifications.php?filter=unread" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'unread' ? 'bg-gray-700' : '' ?>">
                                 Unread
-                                <span class="float-right bg-yellow-500 text-black text-xs px-2 py-1 rounded-full"><?= $unread_count ?></span>
+                                <span class="float-right bg-yellow-500 text-black text-xs px-2 py-1 rounded-full notification-badge"><?= $unread_count ?></span>
                             </a>
                             <a href="notifications.php?filter=read" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'read' ? 'bg-gray-700' : '' ?>">
                                 Read
-                                <span class="float-right bg-gray-600 text-xs px-2 py-1 rounded-full"><?= $total_notifications - $unread_count ?></span>
+                                <span class="float-right bg-gray-600 text-xs px-2 py-1 rounded-full notification-badge"><?= $total_notifications - $unread_count ?></span>
                             </a>
                             <div class="border-t border-gray-700 my-1"></div>
                             <a href="notifications.php?filter=schedule" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'schedule' ? 'bg-gray-700' : '' ?>">
                                 Schedule
-                                <span class="float-right bg-blue-500 text-xs px-2 py-1 rounded-full"><?= isset($typeCounts['schedule']) ? $typeCounts['schedule']['count'] : 0 ?></span>
+                                <span class="float-right bg-blue-500 text-xs px-2 py-1 rounded-full notification-badge"><?= isset($typeCounts['schedule']) ? $typeCounts['schedule']['count'] : 0 ?></span>
                             </a>
                             <a href="notifications.php?filter=payment" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'payment' ? 'bg-gray-700' : '' ?>">
                                 Payments
-                                <span class="float-right bg-green-500 text-xs px-2 py-1 rounded-full"><?= isset($typeCounts['payment']) ? $typeCounts['payment']['count'] : 0 ?></span>
+                                <span class="float-right bg-green-500 text-xs px-2 py-1 rounded-full notification-badge"><?= isset($typeCounts['payment']) ? $typeCounts['payment']['count'] : 0 ?></span>
                             </a>
                             <a href="notifications.php?filter=membership" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'membership' ? 'bg-gray-700' : '' ?>">
                                 Memberships
-                                <span class="float-right bg-purple-500 text-xs px-2 py-1 rounded-full"><?= isset($typeCounts['membership']) ? $typeCounts['membership']['count'] : 0 ?></span>
+                                <span class="float-right bg-purple-500 text-xs px-2 py-1 rounded-full notification-badge"><?= isset($typeCounts['membership']) ? $typeCounts['membership']['count'] : 0 ?></span>
                             </a>
                             <a href="notifications.php?filter=system" class="block px-4 py-2 text-sm text-white hover:bg-gray-700 <?= $filter === 'system' ? 'bg-gray-700' : '' ?>">
                                 System
-                                <span class="float-right bg-red-500 text-xs px-2 py-1 rounded-full"><?= isset($typeCounts['system']) ? $typeCounts['system']['count'] : 0 ?></span>
+                                <span class="float-right bg-red-500 text-xs px-2 py-1 rounded-full notification-badge"><?= isset($typeCounts['system']) ? $typeCounts['system']['count'] : 0 ?></span>
                             </a>
                         </div>
                     </div>
@@ -194,240 +301,413 @@ include 'includes/navbar.php';
             </div>
         </div>
         
-        <?php if (!empty($error_message)): ?>
-            <div class="bg-red-500 bg-opacity-80 text-white p-4 rounded-xl mb-6 animate-pulse">
-                An error occurred. Please try again later.
+        <!-- Filter indicator -->
+        <div class="mb-6">
+            <div class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-800 text-gray-300">
+            <span class="
+                    <?php if ($filter === 'all'): ?>text-white<?php endif; ?>
+                    <?php if ($filter === 'unread'): ?>text-yellow-400<?php endif; ?>
+                    <?php if ($filter === 'read'): ?>text-gray-400<?php endif; ?>
+                    <?php if ($filter === 'schedule'): ?>text-blue-400<?php endif; ?>
+                    <?php if ($filter === 'payment'): ?>text-green-400<?php endif; ?>
+                    <?php if ($filter === 'membership'): ?>text-purple-400<?php endif; ?>
+                    <?php if ($filter === 'system'): ?>text-red-400<?php endif; ?>
+                ">
+                    <i class="fas fa-filter mr-1"></i>
+                    Filter: 
+                    <?php if ($filter === 'all'): ?>All Notifications
+                    <?php elseif ($filter === 'unread'): ?>Unread
+                    <?php elseif ($filter === 'read'): ?>Read
+                    <?php elseif ($filter === 'schedule'): ?>Schedule
+                    <?php elseif ($filter === 'payment'): ?>Payments
+                    <?php elseif ($filter === 'membership'): ?>Memberships
+                    <?php elseif ($filter === 'system'): ?>System
+                    <?php endif; ?>
+                </span>
+                <a href="notifications.php" class="ml-2 text-yellow-500 hover:text-yellow-400 transition-colors duration-200">
+                    <i class="fas fa-times"></i>
+                </a>
+            </div>
+        </div>
+        
+        <?php if ($error_message): ?>
+            <div class="bg-red-900 text-white p-4 rounded-lg mb-6">
+                <p><i class="fas fa-exclamation-circle mr-2"></i> <?= htmlspecialchars($error_message) ?></p>
             </div>
         <?php endif; ?>
-
-        <?php if (count($notifications) > 0): ?>
+        
+        <?php if (empty($notifications)): ?>
+            <div class="bg-gray-800 rounded-lg p-8 text-center">
+                <div class="flex flex-col items-center justify-center">
+                    <i class="fas fa-bell-slash text-gray-500 text-5xl mb-4"></i>
+                    <h3 class="text-xl font-semibold text-white mb-2">No notifications found</h3>
+                    <p class="text-gray-400">
+                        <?php if ($filter !== 'all'): ?>
+                            Try changing your filter or check back later.
+                        <?php else: ?>
+                            You don't have any notifications yet. Check back later.
+                        <?php endif; ?>
+                    </p>
+                </div>
+            </div>
+        <?php else: ?>
             <div class="space-y-4">
-                <?php foreach ($notifications as $notification): 
-                    // Determine notification type styling
-                    $typeIcon = 'bell';
-                    $typeColor = 'from-gray-700 to-gray-800';
-                    $typeBorder = 'border-gray-600';
-                    
-                    if ($notification['type'] === 'schedule') {
-                        $typeIcon = 'calendar-check';
-                        $typeColor = 'from-blue-700 to-blue-800';
-                        $typeBorder = 'border-blue-600';
-                    } elseif ($notification['type'] === 'payment') {
-                        $typeIcon = 'credit-card';
-                        $typeColor = 'from-green-700 to-green-800';
-                        $typeBorder = 'border-green-600';
-                    } elseif ($notification['type'] === 'membership') {
-                        $typeIcon = 'id-card';
-                        $typeColor = 'from-purple-700 to-purple-800';
-                        $typeBorder = 'border-purple-600';
-                    } elseif ($notification['type'] === 'system') {
-                        $typeIcon = 'exclamation-circle';
-                        $typeColor = 'from-red-700 to-red-800';
-                        $typeBorder = 'border-red-600';
-                    }
-                    
-                    // Override for unread notifications
-                    if (!$notification['is_read']) {
-                        $typeColor = 'from-yellow-400 to-yellow-500';
-                        $typeBorder = 'border-yellow-400';
-                    }
-                ?>
-                    <div class="bg-gray-800 bg-opacity-50 backdrop-blur-lg rounded-3xl overflow-hidden transform hover:scale-[1.01] transition-transform duration-300 border-l-4 <?= $notification['is_read'] ? $typeBorder : 'border-yellow-400' ?>">
-                        <div class="p-5 bg-gradient-to-r <?= $typeColor ?> flex justify-between items-center">
-                            <div class="flex items-center">
-                                <i class="fas fa-<?= $typeIcon ?> mr-3 <?= $notification['is_read'] ? 'text-white' : 'text-gray-900' ?>"></i>
-                                <h3 class="text-xl font-bold <?= $notification['is_read'] ? 'text-white' : 'text-gray-900' ?>">
-                                    <?= htmlspecialchars($notification['title']) ?>
-                                </h3>
+                <?php foreach ($notifications as $notification): ?>
+                    <div id="notification-<?= $notification['id'] ?>" class="notification-item bg-gray-800 rounded-lg overflow-hidden shadow-lg <?= $notification['is_read'] ? '' : 'border-l-4 border-yellow-500 animate-pulse-once' ?>">
+                        <div class="p-4 sm:p-6">
+                            <div class="flex flex-col sm:flex-row justify-between notification-header">
+                                <div class="flex items-start">
+                                    <div class="flex-shrink-0 mr-3">
+                                        <?php if ($notification['type'] === 'schedule'): ?>
+                                            <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
+                                                <i class="fas fa-calendar-check text-white"></i>
+                                            </div>
+                                        <?php elseif ($notification['type'] === 'payment'): ?>
+                                            <div class="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center">
+                                                <i class="fas fa-credit-card text-white"></i>
+                                            </div>
+                                        <?php elseif ($notification['type'] === 'membership'): ?>
+                                            <div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center">
+                                                <i class="fas fa-id-card text-white"></i>
+                                            </div>
+                                        <?php elseif ($notification['type'] === 'system'): ?>
+                                            <div class="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center">
+                                                <i class="fas fa-cogs text-white"></i>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center">
+                                                <i class="fas fa-bell text-white"></i>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-white">
+                                            <?= htmlspecialchars($notification['title']) ?>
+                                            <?php if (!$notification['is_read']): ?>
+                                                <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500 text-black">
+                                                    New
+                                                </span>
+                                            <?php endif; ?>
+                                        </h3>
+                                        <p class="text-gray-300 mt-1"><?= nl2br(htmlspecialchars($notification['message'])) ?></p>
+                                        
+                                        <?php if ($notification['gym_name']): ?>
+                                            <div class="mt-2">
+                                                <a href="gym-profile.php?id=<?= $notification['gym_id'] ?>" class="text-yellow-400 hover:text-yellow-300 text-sm inline-flex items-center">
+                                                    <i class="fas fa-dumbbell mr-1"></i>
+                                                    <?= htmlspecialchars($notification['gym_name']) ?>
+                                                </a>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <div class="notification-timestamp text-sm text-gray-400 mt-2 sm:mt-0 sm:ml-4">
+                                    <span title="<?= date('F j, Y g:i A', strtotime($notification['created_at'])) ?>">
+                                        <?= time_elapsed_string($notification['created_at']) ?>
+                                    </span>
+                                </div>
                             </div>
                             
-                            <div class="flex space-x-2">
+                            <div class="mt-4 flex justify-end gap-2 notification-actions">
                                 <?php if (!$notification['is_read']): ?>
-                                <form method="post" action="notifications.php?page=<?= $page ?>&filter=<?= $filter ?>">
-                                    <input type="hidden" name="notification_id" value="<?= $notification['id'] ?>">
-                                    <button type="submit" name="mark_read" class="text-sm bg-black bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full transition-colors duration-200">
-                                        Mark as Read
-                                    </button>
-                                </form>
+                                    <form method="post" action="notifications.php?page=<?= $page ?>&filter=<?= $filter ?>" class="mark-read-form">
+                                        <input type="hidden" name="notification_id" value="<?= $notification['id'] ?>">
+                                        <input type="hidden" name="mark_read" value="1">
+                                        <button type="submit" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors duration-200">
+                                            <i class="fas fa-check mr-1"></i> Mark as Read
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
                                 
-                                <form method="post" action="notifications.php?page=<?= $page ?>&filter=<?= $filter ?>" onsubmit="return confirm('Are you sure you want to delete this notification?')">
+                                <?php if ($notification['related_id'] && $notification['type'] === 'schedule'): ?>
+                                    <a href="view-schedule.php?id=<?= $notification['related_id'] ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors duration-200">
+                                        <i class="fas fa-calendar mr-1"></i> View Schedule
+                                    </a>
+                                <?php elseif ($notification['related_id'] && $notification['type'] === 'payment'): ?>
+                                    <a href="payment-history.php?id=<?= $notification['related_id'] ?>" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors duration-200">
+                                        <i class="fas fa-receipt mr-1"></i> View Payment
+                                    </a>
+                                <?php elseif ($notification['related_id'] && $notification['type'] === 'membership'): ?>
+                                    <a href="membership-details.php?id=<?= $notification['related_id'] ?>" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm transition-colors duration-200">
+                                        <i class="fas fa-id-card mr-1"></i> View Membership
+                                    </a>
+                                <?php endif; ?>
+                                
+                                <form method="post" action="notifications.php?page=<?= $page ?>&filter=<?= $filter ?>" class="delete-notification-form">
                                     <input type="hidden" name="notification_id" value="<?= $notification['id'] ?>">
-                                    <button type="submit" name="delete_notification" class="text-sm bg-black bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full transition-colors duration-200">
-                                        <i class="fas fa-trash-alt"></i>
+                                    <input type="hidden" name="delete_notification" value="1">
+                                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors duration-200">
+                                        <i class="fas fa-trash-alt mr-1"></i> Delete
                                     </button>
                                 </form>
-                            </div>
-                        </div>
-                        
-                        <div class="p-5">
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <?php if ($notification['gym_id']): ?>
-                                    <a href="gym-profile.php?id=<?= $notification['gym_id'] ?>" class="text-blue-400 hover:text-blue-300 text-sm">
-                                        <i class="fas fa-dumbbell mr-1"></i> <?= htmlspecialchars($notification['gym_name']) ?>
-                                    </a>
-                                    <?php endif; ?>
-                                </div>
-                                <div class="text-gray-400 text-sm">
-                                    <i class="far fa-clock mr-1"></i> <?= date('M d, Y h:i A', strtotime($notification['created_at'])) ?>
-                                </div>
-                            </div>
-                            
-                            <p class="text-gray-300 mb-4">
-                                <?= htmlspecialchars($notification['message']) ?>
-                            </p>
-                            
-                            <div class="flex justify-end mt-2">
-                                <?php if ($notification['type'] === 'schedule' && $notification['related_id']): ?>
-                                <a href="schedule-history.php?id=<?= $notification['related_id'] ?>" class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
-                                    View Schedule
-                                </a>
-                                <?php elseif ($notification['type'] === 'payment' && $notification['related_id']): ?>
-                                <a href="payment_history.php?id=<?= $notification['related_id'] ?>" class="text-sm bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
-                                    View Payment
-                                </a>
-                                <?php elseif ($notification['type'] === 'membership' && $notification['related_id']): ?>
-                                <a href="view_membership.php?id=<?= $notification['related_id'] ?>" class="text-sm bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
-                                    View Membership
-                                </a>
-                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
-                
-                <!-- Pagination -->
-                <?php if ($total_pages > 1): ?>
-                <div class="flex justify-center mt-8">
-                    <div class="inline-flex rounded-md shadow-sm">
+            </div>
+            
+            <!-- Pagination -->
+            <?php if ($total_pages > 1): ?>
+                <div class="mt-8 flex justify-center">
+                    <nav class="inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                         <?php if ($page > 1): ?>
-                        <a href="notifications.php?page=1&filter=<?= $filter ?>" class="px-4 py-2 text-sm font-medium text-white bg-gray-700 rounded-l-lg hover:bg-gray-600 transition-colors duration-200">
-                            <i class="fas fa-angle-double-left"></i>
-                        </a>
-                        <a href="notifications.php?page=<?= $page - 1 ?>&filter=<?= $filter ?>" class="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-600 transition-colors duration-200">
-                            <i class="fas fa-angle-left"></i>
-                        </a>
+                            <a href="notifications.php?page=<?= $page - 1 ?>&filter=<?= $filter ?>" class="pagination-item relative inline-flex items-center px-3 py-2 rounded-l-md border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700">
+                                <i class="fas fa-chevron-left"></i>
+                                <span class="sr-only">Previous</span>
+                            </a>
+                        <?php else: ?>
+                            <span class="relative inline-flex items-center px-3 py-2 rounded-l-md border border-gray-700 bg-gray-900 text-sm font-medium text-gray-500 cursor-not-allowed">
+                                <i class="fas fa-chevron-left"></i>
+                                <span class="sr-only">Previous</span>
+                            </span>
                         <?php endif; ?>
                         
                         <?php
-                        // Show a limited number of page links
-                        $startPage = max(1, $page - 2);
-                        $endPage = min($total_pages, $page + 2);
+                        // Calculate range of pages to show
+                        $range = 2; // Show 2 pages before and after current page
+                        $start_page = max(1, $page - $range);
+                        $end_page = min($total_pages, $page + $range);
                         
-                        for ($i = $startPage; $i <= $endPage; $i++):
+                        // Always show first page
+                        if ($start_page > 1) {
+                            echo '<a href="notifications.php?page=1&filter=' . $filter . '" class="pagination-item relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700">1</a>';
+                            if ($start_page > 2) {
+                                echo '<span class="relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300">...</span>';
+                            }
+                        }
+                        
+                        // Show page links
+                        for ($i = $start_page; $i <= $end_page; $i++) {
+                            if ($i == $page) {
+                                echo '<span class="pagination-item active relative inline-flex items-center px-4 py-2 border border-yellow-500 bg-yellow-500 text-sm font-medium text-black">' . $i . '</span>';
+                            } else {
+                                echo '<a href="notifications.php?page=' . $i . '&filter=' . $filter . '" class="pagination-item relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700">' . $i . '</a>';
+                            }
+                        }
+                        
+                        // Always show last page
+                        if ($end_page < $total_pages) {
+                            if ($end_page < $total_pages - 1) {
+                                echo '<span class="relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300">...</span>';
+                            }
+                            echo '<a href="notifications.php?page=' . $total_pages . '&filter=' . $filter . '" class="pagination-item relative inline-flex items-center px-4 py-2 border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700">' . $total_pages . '</a>';
+                        }
                         ?>
-                            <a href="notifications.php?page=<?= $i ?>&filter=<?= $filter ?>" class="px-4 py-2 text-sm font-medium <?= $i === $page ? 'text-black bg-yellow-500' : 'text-white bg-gray-700 hover:bg-gray-600' ?> transition-colors duration-200">
-                                <?= $i ?>
-                            </a>
-                        <?php endfor; ?>
                         
                         <?php if ($page < $total_pages): ?>
-                        <a href="notifications.php?page=<?= $page + 1 ?>&filter=<?= $filter ?>" class="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-600 transition-colors duration-200">
-                            <i class="fas fa-angle-right"></i>
-                        </a>
-                        <a href="notifications.php?page=<?= $total_pages ?>&filter=<?= $filter ?>" class="px-4 py-2 text-sm font-medium text-white bg-gray-700 rounded-r-lg hover:bg-gray-600 transition-colors duration-200">
-                            <i class="fas fa-angle-double-right"></i>
-                        </a>
+                            <a href="notifications.php?page=<?= $page + 1 ?>&filter=<?= $filter ?>" class="pagination-item relative inline-flex items-center px-3 py-2 rounded-r-md border border-gray-700 bg-gray-800 text-sm font-medium text-gray-300 hover:bg-gray-700">
+                                <i class="fas fa-chevron-right"></i>
+                                <span class="sr-only">Next</span>
+                            </a>
+                        <?php else: ?>
+                            <span class="relative inline-flex items-center px-3 py-2 rounded-r-md border border-gray-700 bg-gray-900 text-sm font-medium text-gray-500 cursor-not-allowed">
+                                <i class="fas fa-chevron-right"></i>
+                                <span class="sr-only">Next</span>
+                            </span>
                         <?php endif; ?>
-                    </div>
+                    </nav>
                 </div>
-                <?php endif; ?>
-                
-            </div>
-        <?php else: ?>
-            <div class="bg-gray-800 bg-opacity-50 backdrop-blur-lg rounded-3xl p-8 text-center">
-                <div class="text-gray-400 mb-4">
-                    <i class="fas fa-bell-slash text-5xl"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white mb-2">No Notifications</h3>
-                <p class="text-gray-400">
-                    <?php if ($filter !== 'all'): ?>
-                        No <?= $filter ?> notifications found. Try changing your filter.
-                    <?php else: ?>
-                        You don't have any notifications yet. They will appear here when you receive them.
-                    <?php endif; ?>
-                </p>
-            </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </div>
 
 <script>
-    // Filter dropdown functionality
+    // Filter dropdown toggle
     const filterDropdown = document.getElementById('filterDropdown');
     const filterMenu = document.getElementById('filterMenu');
+    const chevronIcon = filterDropdown.querySelector('.fa-chevron-down');
     
-    if (filterDropdown && filterMenu) {
-        filterDropdown.addEventListener('click', function() {
-            filterMenu.classList.toggle('hidden');
+    filterDropdown.addEventListener('click', function() {
+        filterMenu.classList.toggle('show');
+        chevronIcon.style.transform = filterMenu.classList.contains('show') ? 'rotate(180deg)' : 'rotate(0)';
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+        if (!filterDropdown.contains(event.target) && !filterMenu.contains(event.target)) {
+            filterMenu.classList.remove('show');
+            chevronIcon.style.transform = 'rotate(0)';
+        }
+    });
+    
+    // Smooth animations for form submissions
+    document.querySelectorAll('.mark-read-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const notificationId = this.querySelector('input[name="notification_id"]').value;
+            const notificationElement = document.getElementById('notification-' + notificationId);
+            
+            // Remove the yellow border and add a transition effect
+            notificationElement.classList.remove('border-l-4', 'border-yellow-500');
+            notificationElement.style.borderLeftWidth = '0';
+            
+            // Remove the "New" badge
+            const newBadge = notificationElement.querySelector('.bg-yellow-500.text-black');
+            if (newBadge) {
+                newBadge.remove();
+            }
+            
+            // Remove the "Mark as Read" button
+            const markReadButton = this.querySelector('button');
+            markReadButton.innerHTML = '<i class="fas fa-check mr-1"></i> Marked as Read';
+            markReadButton.classList.add('bg-gray-600');
+            markReadButton.disabled = true;
+            
+            // Submit the form after animation
+            setTimeout(() => {
+                this.submit();
+            }, 500);
         });
+    });
+    
+    // Animation for delete notification
+    document.querySelectorAll('.delete-notification-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const notificationId = this.querySelector('input[name="notification_id"]').value;
+            const notificationElement = document.getElementById('notification-' + notificationId);
+            
+            // Add fade out animation
+            notificationElement.classList.add('fade-out');
+            
+            // Submit the form after animation
+            setTimeout(() => {
+                this.submit();
+            }, 500);
+        });
+    });
+    
+    // Lazy load images for better performance
+    document.addEventListener('DOMContentLoaded', function() {
+        const lazyImages = [].slice.call(document.querySelectorAll('img.lazy'));
         
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function(event) {
-            if (!filterDropdown.contains(event.target) && !filterMenu.contains(event.target)) {
-                filterMenu.classList.add('hidden');
+        if ('IntersectionObserver' in window) {
+            let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        let lazyImage = entry.target;
+                        lazyImage.src = lazyImage.dataset.src;
+                        lazyImage.classList.remove('lazy');
+                        lazyImageObserver.unobserve(lazyImage);
+                    }
+                });
+            });
+            
+            lazyImages.forEach(function(lazyImage) {
+                lazyImageObserver.observe(lazyImage);
+            });
+        }
+    });
+    
+    // Responsive design adjustments
+    function adjustForMobile() {
+        const isMobile = window.innerWidth < 640;
+        const actionButtons = document.querySelectorAll('.notification-actions button, .notification-actions a');
+        
+        actionButtons.forEach(button => {
+            // Adjust button text on mobile
+            if (isMobile) {
+                // Store original text in data attribute if not already stored
+                if (!button.dataset.originalText) {
+                    button.dataset.originalText = button.innerHTML;
+                    
+                    // Show only icon on mobile
+                    const icon = button.querySelector('i');
+                    if (icon) {
+                        button.innerHTML = icon.outerHTML;
+                    }
+                }
+            } else {
+                // Restore original text on desktop
+                if (button.dataset.originalText) {
+                    button.innerHTML = button.dataset.originalText;
+                }
             }
         });
     }
     
-    // Auto-hide notifications after marking as read
-    document.querySelectorAll('form[name="mark_read"]').forEach(form => {
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-            
-            fetch('notifications.php?page=<?= $page ?>&filter=<?= $filter ?>', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (response.ok) {
-                    // Find the parent notification element and add a fade-out class
-                    const notificationElement = this.closest('.notification-item');
-                    if (notificationElement) {
-                        notificationElement.classList.add('opacity-50', 'transition-opacity', 'duration-500');
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 500);
-                    } else {
-                        window.location.reload();
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                window.location.reload();
-            });
-        });
-    });
+    // Call on load and resize
+    window.addEventListener('load', adjustForMobile);
+    window.addEventListener('resize', adjustForMobile);
     
-    // Animate new notifications
-    document.addEventListener('DOMContentLoaded', function() {
-        const unreadNotifications = document.querySelectorAll('.border-yellow-400');
-        unreadNotifications.forEach((notification, index) => {
-            setTimeout(() => {
-                notification.classList.add('animate-pulse-once');
-            }, index * 200); // Stagger the animations
-        });
-    });
+    // Real-time notification updates
+    let lastChecked = new Date().getTime();
+    
+    function checkForNewNotifications() {
+        fetch('api/check_notifications.php?since=' + lastChecked)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.new_notifications > 0) {
+                    // Show notification indicator
+                    const indicator = document.createElement('div');
+                    indicator.className = 'fixed bottom-4 right-4 bg-yellow-500 text-black px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse-once';
+                    indicator.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fas fa-bell mr-2"></i>
+                            <span>You have ${data.new_notifications} new notification${data.new_notifications > 1 ? 's' : ''}!</span>
+                            <button class="ml-3 text-black hover:text-gray-800" onclick="refreshPage()">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                        </div>
+                    `;
+                    document.body.appendChild(indicator);
+                    
+                    // Auto-remove after 10 seconds
+                    setTimeout(() => {
+                        indicator.classList.add('fade-out');
+                        setTimeout(() => {
+                            indicator.remove();
+                        }, 500);
+                    }, 10000);
+                }
+                
+                lastChecked = new Date().getTime();
+            })
+            .catch(error => console.error('Error checking for notifications:', error));
+    }
+    
+    function refreshPage() {
+        window.location.reload();
+    }
+    
+    // Check for new notifications every 60 seconds
+    setInterval(checkForNewNotifications, 60000);
 </script>
 
-<style>
-    /* Custom animation for unread notifications */
-    @keyframes pulseOnce {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.02); }
-        100% { transform: scale(1); }
-    }
+<?php
+// Helper function to format time elapsed string
+function time_elapsed_string($datetime, $full = false) {
+    $now = new DateTime('now', new DateTimeZone(date_default_timezone_get()));
+    $ago = new DateTime($datetime, new DateTimeZone(date_default_timezone_get()));
+    $diff = $now->diff($ago);
+
+    $diff->w = floor($diff->d / 7);
+    $diff->d -= $diff->w * 7;
+
+    $string = array(
+        'y' => 'year',
+        'm' => 'month',
+        'w' => 'week',
+        'd' => 'day',
+        'h' => 'hour',
+        'i' => 'minute',
+        's' => 'second',
+    );
     
-    .animate-pulse-once {
-        animation: pulseOnce 1s ease-in-out;
+    foreach ($string as $k => &$v) {
+        if ($diff->$k) {
+            $v = $diff->$k . ' ' . $v . ($diff->$k > 1 ? 's' : '');
+        } else {
+            unset($string[$k]);
+        }
     }
-    
-    /* Smooth transitions */
-    .notification-item {
-        transition: all 0.3s ease;
-    }
-</style>
-<?php include('includes/footer.php'); ?>
+
+    if (!$full) $string = array_slice($string, 0, 1);
+    return $string ? implode(', ', $string) . ' ago' : 'just now';
+}
+
+?>
+
+</body>
+</html>

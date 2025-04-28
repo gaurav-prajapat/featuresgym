@@ -5,8 +5,137 @@ require_once 'config/database.php';
 require_once 'includes/EmailService.php';
 require_once 'includes/OTPService.php';
 
-// Set environment to production
-define('ENVIRONMENT', 'production');
+function testSMTPWithPHPMailer($host, $port, $username, $password, $encryption, $fromEmail, $toEmail) {
+  require_once 'vendor/autoload.php';
+  
+  $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+  $result = [
+      'success' => false,
+      'message' => '',
+      'details' => []
+  ];
+  
+  try {
+      // Server settings
+      $mail->SMTPDebug = 2; // Enable verbose debug output
+      $mail->isSMTP();
+      $mail->Host = $host;
+      $mail->Port = $port;
+      $mail->SMTPAuth = true;
+      $mail->Username = $username;
+      $mail->Password = $password;
+      
+      // Add this for Hostinger SSL connections
+      if ($encryption === 'ssl') {
+          $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+          $mail->SMTPOptions = [
+              'ssl' => [
+                  'verify_peer' => false,
+                  'verify_peer_name' => false,
+                  'allow_self_signed' => true
+              ]
+          ];
+      } elseif ($encryption === 'tls') {
+          $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+      }
+      
+      // Capture debug output
+      $debugOutput = '';
+      $mail->Debugoutput = function($str, $level) use (&$debugOutput) {
+          $debugOutput .= "[$level] $str\n";
+      };
+      
+      // Recipients
+      $mail->setFrom($fromEmail, 'Test Sender');
+      $mail->addAddress($toEmail);
+      
+      // Content
+      $mail->isHTML(true);
+      $mail->Subject = 'SMTP Test Email';
+      $mail->Body = 'This is a test email to verify SMTP settings are working correctly.';
+      
+      // Send the email
+      $mail->send();
+      
+      $result['success'] = true;
+      $result['message'] = "Email sent successfully!";
+      $result['details'] = explode("\n", $debugOutput);
+      
+  } catch (Exception $e) {
+      $result['message'] = "Email could not be sent. Error: " . $mail->ErrorInfo;
+      $result['details'] = explode("\n", $debugOutput);
+      $result['details'][] = "Exception: " . $e->getMessage();
+  }
+  
+  return $result;
+}
+
+// Add this near the top of your file, after the session_start() and before other code
+function debug_log($message, $data = null) {
+  if (defined('ENVIRONMENT') && ENVIRONMENT === 'development') {
+      if (!isset($_SESSION['debug_logs'])) {
+          $_SESSION['debug_logs'] = [];
+      }
+      
+      $_SESSION['debug_logs'][] = [
+          'time' => date('H:i:s'),
+          'message' => $message,
+          'data' => $data
+      ];
+      
+      // Also log to PHP error log for server-side visibility
+      if ($data !== null) {
+          error_log("DEBUG: $message - " . print_r($data, true));
+      } else {
+          error_log("DEBUG: $message");
+      }
+  }
+}
+
+// detect development environment
+if (!defined('ENVIRONMENT')) {
+  // Check if we're on localhost
+  $serverName = strtolower($_SERVER['SERVER_NAME']);
+  if ($serverName === 'localhost' || $serverName === '127.0.0.1' || strpos($serverName, '.local') !== false) {
+      define('ENVIRONMENT', 'development');
+  } else {
+      define('ENVIRONMENT', 'production');
+  }
+}
+
+// Add this near the top of the file, after session_start() and before any output
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// Add this after the environment detection code
+debug_log('Environment detected as: ' . ENVIRONMENT);
+debug_log('Server name: ' . $_SERVER['SERVER_NAME']);
+
+// Initialize database connection
+$db = new GymDatabase();
+$conn = $db->getConnection();
+$auth = new Auth($conn);
+$otpService = new OTPService($conn);
+
+// Fetch system settings
+$stmt = $conn->prepare("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('site_name', 'logo_path', 'favicon_path', 'user_registration', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption', 'smtp_from_email', 'smtp_from_name')");
+$stmt->execute();
+$settings = [];
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $settings[$row['setting_key']] = $row['setting_value'];
+}
+
+debug_log('Loaded system settings', $settings);
+
+// Check if user registration is enabled
+if (isset($settings['user_registration']) && $settings['user_registration'] == '0') {
+    $_SESSION['error'] = "User registration is currently disabled. Please contact the administrator.";
+    header("Location: login.php");
+    exit();
+}
+
+$siteName = $settings['site_name'] ?? 'Features Gym';
+$logoPath = $settings['logo_path'] ?? 'assets/images/logo.png';
 
 // Load environment variables
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {
@@ -18,13 +147,23 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
             $dotenv->load();
             
             // SMTP Configuration
-            $smtpHost = $_ENV['SMTP_HOST'] ?? '';
-            $smtpPort = $_ENV['SMTP_PORT'] ?? 587;
-            $smtpUsername = $_ENV['SMTP_USERNAME'] ?? '';
-            $smtpPassword = $_ENV['SMTP_PASSWORD'] ?? '';
-            $smtpEncryption = $_ENV['SMTP_ENCRYPTION'] ?? 'tls';
-            $smtpFromEmail = $_ENV['SMTP_FROM_EMAIL'] ?? '';
-            $smtpFromName = $_ENV['SMTP_FROM_NAME'] ?? 'ProFitMart';
+            $smtpHost = $_ENV['SMTP_HOST'] ?? $settings['smtp_host'] ?? '';
+            $smtpPort = $_ENV['SMTP_PORT'] ?? $settings['smtp_port'] ?? 587;
+            $smtpUsername = $_ENV['SMTP_USERNAME'] ?? $settings['smtp_username'] ?? '';
+            $smtpPassword = $_ENV['SMTP_PASSWORD'] ?? $settings['smtp_password'] ?? '';
+            $smtpEncryption = $_ENV['SMTP_ENCRYPTION'] ?? $settings['smtp_encryption'] ?? 'tls';
+            $smtpFromEmail = $_ENV['SMTP_FROM_EMAIL'] ?? $settings['smtp_from_email'] ?? '';
+            $smtpFromName = $_ENV['SMTP_FROM_NAME'] ?? $settings['smtp_from_name'] ?? $siteName;
+
+            // NOW you can log the SMTP configuration
+            debug_log('SMTP Configuration', [
+              'host' => $smtpHost,
+              'port' => $smtpPort,
+              'username' => $smtpUsername ? 'Set' : 'Not set',
+              'encryption' => $smtpEncryption,
+              'from_email' => $smtpFromEmail,
+              'from_name' => $smtpFromName
+            ]);
             
             // Google OAuth Configuration
             $googleClientId = $_ENV['GOOGLE_CLIENT_ID'] ?? '';
@@ -32,21 +171,23 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
             $googleRedirectUrl = $_ENV['GOOGLE_REDIRECT_URI'] ?? '';
             
             // Razorpay Configuration (if needed)
-            $razorpayKeyId = $_ENV['RAZORPAY_KEY_ID'] ?? '';
-            $razorpayKeySecret = $_ENV['RAZORPAY_KEY_SECRET'] ?? '';
+            $razorpayKeyId = $_ENV['RAZORPAY_KEY_ID'] ?? $settings['razorpay_key_id'] ?? '';
+            $razorpayKeySecret = $_ENV['RAZORPAY_KEY_SECRET'] ?? $settings['razorpay_key_secret'] ?? '';
         } catch (Exception $e) {
             error_log("Error loading .env file: " . $e->getMessage());
-            // Fallback to empty values if .env loading fails
-            $smtpHost = '';
-            $smtpPort = 587;
-            $smtpUsername = '';
-            $smtpPassword = '';
-            $smtpEncryption = 'tls';
-            $smtpFromEmail = '';
-            $smtpFromName = 'ProFitMart';
+            // Fallback to system settings
+            $smtpHost = $settings['smtp_host'] ?? '';
+            $smtpPort = $settings['smtp_port'] ?? 587;
+            $smtpUsername = $settings['smtp_username'] ?? '';
+            $smtpPassword = $settings['smtp_password'] ?? '';
+            $smtpEncryption = $settings['smtp_encryption'] ?? 'tls';
+            $smtpFromEmail = $settings['smtp_from_email'] ?? '';
+            $smtpFromName = $settings['smtp_from_name'] ?? $siteName;
             $googleClientId = '';
             $googleClientSecret = '';
             $googleRedirectUrl = '';
+            $razorpayKeyId = $settings['razorpay_key_id'] ?? '';
+            $razorpayKeySecret = $settings['razorpay_key_secret'] ?? '';
         }
     } else {
         error_log("Dotenv class not found. Make sure you've installed the vlucas/phpdotenv package.");
@@ -54,12 +195,6 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
 } else {
     error_log("Vendor autoload.php not found. Please run 'composer require vlucas/phpdotenv'");
 }
-
-// Initialize database connection
-$db = new GymDatabase();
-$conn = $db->getConnection();
-$auth = new Auth($conn);
-$otpService = new OTPService($conn);
 
 // Initialize Google Client if credentials are available
 $googleAuthUrl = "#";
@@ -182,9 +317,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $stmt->execute([
                         $userId,
-                        'Welcome to ProFitMart!',
+                        'Welcome to ' . htmlspecialchars($siteName) . '!',
                         'Thank you for joining our community. Start exploring gyms and scheduling your workouts today!'
                     ]);
+                    
+                    // Check if admin notification is enabled
+                    $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'user_registration_notification'");
+                    $stmt->execute();
+                    $notifyAdmin = $stmt->fetchColumn();
+                    
+                    if ($notifyAdmin == '1') {
+                        // Send notification to admin
+                        $stmt = $conn->prepare("
+                            INSERT INTO admin_notifications (
+                                notification_type,
+                                title,
+                                message,
+                                created_at,
+                              status
+                            ) VALUES ('new_user', ?, ?, NOW(), 0)
+                        ");
+                        
+                        $stmt->execute([
+                            'New User Registration',
+                            "A new user ($username) has registered with email: $email"
+                        ]);
+                    }
                     
                     $conn->commit();
                     
@@ -211,7 +369,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (empty($email)) {
             $error = "Session expired. Please try registering again.";
-        } else {
+          } else {
             // Generate and store new OTP
             $otp = $otpService->generateOTP();
             if ($otpService->storeOTP($email, $otp) && $otpService->sendOTPEmail($email, $otp)) {
@@ -223,12 +381,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // Initial registration form submission
         try {
-            $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
+           
             $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
             $password = $_POST['password'];
             $confirmPassword = $_POST['confirm_password'];
-            $phone = filter_input(INPUT_POST, 'phone', FILTER_SANITIZE_STRING);
-            $city = filter_input(INPUT_POST, 'city', FILTER_SANITIZE_STRING);
+            $username = htmlspecialchars(trim($_POST['username'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $phone = htmlspecialchars(trim($_POST['phone'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $city = htmlspecialchars(trim($_POST['city'] ?? ''), ENT_QUOTES, 'UTF-8');
             
             // Check terms agreement
             if (!isset($_POST['terms']) || $_POST['terms'] !== 'on') {
@@ -248,7 +407,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Passwords do not match");
             }
 
-            if (!preg_match("/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/", $password)) {
+            // Get password policy from system settings
+            $passwordPolicy = "/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/";
+            
+            if (!preg_match($passwordPolicy, $password)) {
                 throw new Exception("Password must be at least 8 characters and contain uppercase, lowercase, number, and special character");
             }
 
@@ -280,8 +442,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             $_SESSION['temp_user_email'] = $email;
 
-            // Generate and send OTP
+            // Generate and send OTP - always generate a new OTP
             $otp = $otpService->generateOTP();
+            debug_log('Generated new OTP for registration', ['email' => $email, 'otp' => $otp]);
+            
             if ($otpService->storeOTP($email, $otp) && $otpService->sendOTPEmail($email, $otp)) {
                 $showOTPForm = true;
             } else {
@@ -292,6 +456,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+// Later in the file, when handling OTP verification, add this code:
+if (isset($_POST['verify_otp']) && ENVIRONMENT === 'development') {
+    // In development mode, check if we should auto-verify OTPs
+    $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'dev_auto_verify_otp'");
+    $stmt->execute();
+    $autoVerifyOtp = $stmt->fetchColumn();
+    
+    if ($autoVerifyOtp == '1') {
+        // Auto-verify the OTP in development mode
+        $email = $_SESSION['temp_user_email'] ?? '';
+        $submittedOTP = $_POST['otp'];
+        
+        if (!empty($email)) {
+            // Get the actual OTP from the database
+            $stmt = $conn->prepare("SELECT otp FROM otp_verifications WHERE email = ? ORDER BY created_at DESC LIMIT 1");
+            $stmt->execute([$email]);
+            $actualOTP = $stmt->fetchColumn();
+            
+            // If OTP doesn't match, use the actual one
+            if ($submittedOTP !== $actualOTP) {
+                $_POST['otp'] = $actualOTP;
+                // Log this auto-verification
+                error_log("Development mode: Auto-verified OTP for $email. User entered: $submittedOTP, Actual: $actualOTP");
+            }
+        }
+    }
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -300,15 +493,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
-  <title>User Registration | ProFitMart</title>
+  <title>User Registration | <?= htmlspecialchars($siteName) ?></title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <meta name="description" content="Create your account at ProFitMart and start your fitness journey today.">
-  <link rel="icon" href="assets/img/favicon.ico" type="image/x-icon">
+  <meta name="description" content="Create your account at <?= htmlspecialchars($siteName) ?> and start your fitness journey today.">
+  <?php if (!empty($settings['favicon_path'])): ?>
+  <link rel="icon" href="<?= htmlspecialchars($settings['favicon_path']) ?>" type="image/x-icon">
+  <?php endif; ?>
   <!-- Preload critical assets -->
   <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-solid-900.woff2" as="font" type="font/woff2" crossorigin>
   <style>
-    /* Custom styles */
-    .password-requirements {
+        /* Custom styles */
+        .password-requirements {
       font-size: 0.8rem;
       color: #6b7280;
       margin-top: 0.5rem;
@@ -402,12 +597,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Header with logo -->
     <div class="flex justify-center mb-8">
       <div class="logo-container">
-        <div class="w-20 h-20 bg-gradient-to-r from-indigo-600 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-          <div class="relative">
-            <span class="text-white text-3xl font-bold">PFM</span>
-            <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full"></div>
+        <?php if (!empty($settings['logo_path'])): ?>
+          <img src="<?= htmlspecialchars($settings['logo_path']) ?>" alt="<?= htmlspecialchars($siteName) ?> Logo" class="h-20 w-auto">
+        <?php else: ?>
+          <div class="w-20 h-20 bg-gradient-to-r from-indigo-600 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+            <div class="relative">
+              <span class="text-white text-3xl font-bold">FG</span>
+              <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full"></div>
+            </div>
           </div>
-        </div>
+        <?php endif; ?>
       </div>
     </div>
     
@@ -418,7 +617,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <div class="h-full flex flex-col justify-between">
             <div>
               <h2 class="text-3xl font-bold mb-6">Join Our Fitness Community</h2>
-              <p class="mb-8 text-indigo-100">Register with ProFitMart and connect with fitness enthusiasts across the country.</p>
+              <p class="mb-8 text-indigo-100">Register with <?= htmlspecialchars($siteName) ?> and connect with fitness enthusiasts across the country.</p>
               
               <div class="space-y-6">
                 <div class="flex items-start">
@@ -503,8 +702,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endif; ?>
           
           <?php if (isset($showOTPForm) && $showOTPForm): ?>
-            <!-- OTP Verification Form -->
-            <form id="otpForm" action="register.php" method="POST" class="space-y-6">
+                        <!-- OTP Verification Form -->
+                        <form id="otpForm" action="register.php" method="POST" class="space-y-6">
               <div class="text-center mb-4">
                 <p class="text-sm text-gray-600">We've sent a verification code to your email</p>
                 <p class="font-medium text-gray-800">
@@ -699,7 +898,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <!-- Footer -->
     <div class="mt-8 text-center text-sm text-gray-500">
-      <p>&copy; <?php echo date('Y'); ?> ProFitMart. All rights reserved.</p>
+      <p>&copy; <?php echo date('Y'); ?> <?= htmlspecialchars($siteName) ?>. All rights reserved.</p>
     </div>
   </div>
 
@@ -852,6 +1051,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             return;
           }
           
+          // Add CSRF token
+          const csrfToken = '<?php echo bin2hex(random_bytes(32)); ?>';
+          let csrfInput = document.querySelector('input[name="csrf_token"]');
+          
+          if (!csrfInput) {
+            csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrf_token';
+            csrfInput.value = csrfToken;
+            form.appendChild(csrfInput);
+          }
+          
+          // Store token in session storage for validation
+          sessionStorage.setItem('csrf_token', csrfToken);
+          
           // If all validations pass, submit the form
           form.submit();
         });
@@ -988,7 +1202,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       
       // Add countdown timer for OTP resend
       if (resendOTPBtn) {
-        let countdown = 60;
+        let countdown = <?php 
+          // Get OTP expiry time from system settings or use default
+          $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'otp_expiry_seconds'");
+          $stmt->execute();
+          $otpExpiry = $stmt->fetchColumn();
+          echo $otpExpiry ? intval($otpExpiry) : 60;
+        ?>;
         let timer;
         
         // Disable resend button initially and start countdown
@@ -1011,7 +1231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Reset timer when resend button is clicked
         resendOTPBtn.addEventListener('click', function() {
           if (!this.disabled) {
-            countdown = 60;
+            countdown = <?php echo $otpExpiry ? intval($otpExpiry) : 60; ?>;
             this.disabled = true;
             this.classList.add('opacity-50', 'cursor-not-allowed');
             this.textContent = `Resend Code (${countdown}s)`;
@@ -1105,10 +1325,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           sessionStorage.setItem('csrf_token', csrfToken);
         }
       });
+      
+      // Check if minification is enabled
+      <?php
+      $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'minify_js'");
+      $stmt->execute();
+      $minifyJs = $stmt->fetchColumn();
+      
+      if ($minifyJs == '1'):
+      ?>
+      // This would be minified in production
+      console.log('JS minification is enabled');
+      <?php endif; ?>
+      
+      // Record user activity if tracking is enabled
+      <?php
+      $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_user_tracking'");
+      $stmt->execute();
+      $trackUsers = $stmt->fetchColumn();
+      
+      if ($trackUsers == '1'):
+      ?>
+      // Send page view data
+      const pageViewData = {
+        page: 'register',
+        referrer: document.referrer,
+        screenWidth: window.innerWidth,
+        screenHeight: window.innerHeight,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Use navigator.sendBeacon for non-blocking analytics
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('analytics/track_pageview.php', JSON.stringify(pageViewData));
+      } else {
+        // Fallback to fetch API
+        fetch('analytics/track_pageview.php', {
+          method: 'POST',
+          body: JSON.stringify(pageViewData),
+          keepalive: true
+        });
+      }
+      <?php endif; ?>
     });
   </script>
+  
+  <?php
+  // Add Facebook Pixel if configured
+  $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'facebook_pixel_id'");
+  $stmt->execute();
+  $facebookPixelId = $stmt->fetchColumn();
+  
+  if (!empty($facebookPixelId)):
+  ?>
+  <!-- Facebook Pixel Code -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '<?= htmlspecialchars($facebookPixelId) ?>');
+    fbq('track', 'PageView');
+    fbq('track', 'ViewRegistration');
+  </script>
+  <noscript>
+    <img height="1" width="1" style="display:none" 
+         src="https://www.facebook.com/tr?id=<?= htmlspecialchars($facebookPixelId) ?>&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Facebook Pixel Code -->
+  <?php endif; ?>
+  
+  <?php
+  // Add Google Analytics if configured
+  $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'google_analytics_id'");
+  $stmt->execute();
+  $googleAnalyticsId = $stmt->fetchColumn();
+  
+  if (!empty($googleAnalyticsId)):
+  ?>
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=<?= htmlspecialchars($googleAnalyticsId) ?>"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', '<?= htmlspecialchars($googleAnalyticsId) ?>');
+    gtag('event', 'page_view', {
+      'page_title': 'Registration',
+      'page_location': window.location.href,
+      'page_path': window.location.pathname
+    });
+  </script>
+  <!-- End Google Analytics -->
+  <?php endif; ?>
+  
+  <?php
+  // Add custom tracking code if configured
+  $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'custom_tracking_code'");
+  $stmt->execute();
+  $customTrackingCode = $stmt->fetchColumn();
+  
+  if (!empty($customTrackingCode)):
+    echo $customTrackingCode;
+  endif;
+  ?>
 </body>
 </html>
 
 
 
+
+           

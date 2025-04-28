@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt->execute([$email, $token, $expiresAt]);
 
         // Send email with reset link (dummy example)
-        $resetLink = "http://localhost/gym/gym/reset_password.php?token=$token";
+        $resetLink = "http://localhost/featuresgym/reset_password.php?token=$token";
         echo "Password reset link: $resetLink";
     } else {
         echo "Email not found.";

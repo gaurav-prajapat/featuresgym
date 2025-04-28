@@ -112,7 +112,7 @@ include '../includes/navbar.php';
       <div class="bg-white dark:bg-gray-800 shadow-lg rounded-xl p-6 mb-8 animate-fade-in">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between">
           <div class="mb-4 md:mb-0">
-            <h1 class="text-3xl font-bold text-gray-800 dark:text-white">Add Your Gym</h1>
+            <h1 class="text-3xl font-bold  dark:text-white">Add Your Gym</h1>
             <p class="text-gray-600 dark:text-gray-400 mt-1">Complete the form below to add your gym to our platform</p>
           </div>
           <div class="flex items-center space-x-2">

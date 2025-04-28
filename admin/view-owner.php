@@ -1,6 +1,7 @@
 <?php
+session_start();
 require_once '../config/database.php';
-include '../includes/navbar.php';
+
 
 // Ensure user is authenticated and has admin role
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
@@ -914,7 +915,7 @@ $payment_methods = $stmt->fetchAll(PDO::FETCH_ASSOC);
     });
 </script>
 
-<?php include('../includes/footer.php'); ?>
+
 
 
 

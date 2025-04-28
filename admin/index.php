@@ -2,7 +2,7 @@
 ob_start();
 session_start();
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -232,7 +232,7 @@ $top_gyms = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+                <h1 class="text-3xl font-bold ">Admin Dashboard</h1>
                 <p class="text-gray-600">Welcome back, Admin! Here's what's happening today.</p>
             </div>
             <div class="mt-4 md:mt-0 flex space-x-3">
@@ -531,7 +531,7 @@ $top_gyms = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <span class="font-medium text-gray-800"><?= number_format($counts['reviews']) ?></span>
                     </div>
                     <div class="mt-4">
-                        <a href="bookings.php" class="text-sm text-indigo-600 hover:text-indigo-800 flex items-center">
+                        <a href="all_bookings.php" class="text-sm text-indigo-600 hover:text-indigo-800 flex items-center">
                             <span>View Bookings</span>
                             <i class="fas fa-arrow-right ml-1 text-xs"></i>
                         </a>
@@ -918,23 +918,6 @@ $top_gyms = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
     </script>
 
-    <!-- Footer -->
-    <footer class="bg-white py-6 mt-auto">
-        <div class="container mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-sm text-gray-600">&copy; <?= date('Y') ?> Fitness Hub. All rights reserved.</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="privacy_policy.php" class="text-sm text-gray-600 hover:text-indigo-600">Privacy Policy</a>
-                    <a href="terms_of_service.php" class="text-sm text-gray-600 hover:text-indigo-600">Terms of Service</a>
-                    <a href="contact.php" class="text-sm text-gray-600 hover:text-indigo-600">Contact Us</a>
-                </div>
-            </div>
-        </div>
-    </footer>
+ 
 </body>
 </html>
-
-
-

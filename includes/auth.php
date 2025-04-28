@@ -103,67 +103,133 @@ class Auth
     }
     
     /**
-     * Login for regular users (members and admins)
-     */
-    public function login($email, $password)
-    {
-        try {
-            $email = filter_var($this->sanitizeInput($email), FILTER_VALIDATE_EMAIL);
+ * Login for regular users (members and admins)
+ */
+public function login($email, $password)
+{
+    try {
+        $email = filter_var($this->sanitizeInput($email), FILTER_VALIDATE_EMAIL);
 
-            if ($this->isAccountLocked($email)) {
-                throw new Exception("Account is locked. Please try again later.");
-            }
+        if ($this->isAccountLocked($email)) {
+            throw new Exception("Account is locked. Please try again later.");
+        }
 
-            $stmt = $this->conn->prepare("SELECT * FROM users WHERE email = ? AND status = 'active' LIMIT 1");
-            $stmt->execute([$email]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = $this->conn->prepare("SELECT * FROM users WHERE email = ? AND status = 'active' LIMIT 1");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!$user) {
-                $this->incrementLoginAttempts($email);
-                return false;
-            }
-
-            if (password_verify($password, $user['password'])) {
-                $this->resetLoginAttempts($email);
-                
-                // Start a clean session
-                if (session_status() === PHP_SESSION_ACTIVE) {
-                    session_regenerate_id(true);
-                }
-                
-                // Set common session variables
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['role'] = $user['role'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['email'] = $user['email'];
-                $_SESSION['last_activity'] = time();
-                $_SESSION['user_ip'] = $_SERVER['REMOTE_ADDR'];
-                
-                // Role-specific session initialization
-                switch ($user['role']) {
-                    case 'admin':
-                        $this->initializeAdminSession($user);
-                        break;
-                    case 'member':
-                        $this->initializeMemberSession($user);
-                        break;
-                    default:
-                        // Basic session for other roles
-                        break;
-                }
-                
-                // Log the login
-                $this->logActivity($user['id'], 'login', 'User logged in');
-                return true;
-            }
-
+        if (!$user) {
             $this->incrementLoginAttempts($email);
             return false;
-        } catch (Exception $e) {
-            error_log("Login error: " . $e->getMessage());
-            return false;
         }
+
+        if (password_verify($password, $user['password'])) {
+            $this->resetLoginAttempts($email);
+            
+            // Start a clean session
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_regenerate_id(true);
+            }
+            
+            // Set common session variables
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['email'] = $user['email'];
+            $_SESSION['last_activity'] = time();
+            $_SESSION['user_ip'] = $_SERVER['REMOTE_ADDR'];
+            
+            // Role-specific session initialization
+            switch ($user['role']) {
+                case 'admin':
+                    $this->initializeAdminSession($user);
+                    break;
+                case 'member':
+                    $this->initializeMemberSession($user);
+                    break;
+                default:
+                    // Basic session for other roles
+                    break;
+            }
+            
+            // Log the login
+            $this->logActivity($user['id'], 'login', 'User logged in');
+            return true;
+        }
+
+        $this->incrementLoginAttempts($email);
+        return false;
+    } catch (Exception $e) {
+        error_log("Login error: " . $e->getMessage());
+        return false;
     }
+}
+
+// /**
+//  * Login for gym owners
+//  */
+// public function loginGymOwner($email, $password)
+// {
+//     try {
+//         $email = filter_var($this->sanitizeInput($email), FILTER_VALIDATE_EMAIL);
+
+//         if ($this->isAccountLocked($email)) {
+//             throw new Exception("Account is locked. Please try again later.");
+//         }
+
+//         $stmt = $this->conn->prepare("
+//             SELECT * FROM gym_owners 
+//             WHERE email = ? AND status = 'active' AND is_verified = 1 AND is_approved = 1 
+//             LIMIT 1
+//         ");
+//         $stmt->execute([$email]);
+//         $owner = $stmt->fetch(PDO::FETCH_ASSOC);
+
+//         if (!$owner) {
+//             $this->incrementLoginAttempts($email);
+//             return false;
+//         }
+
+//         if (password_verify($password, $owner['password_hash'])) {
+//             $this->resetLoginAttempts($email);
+            
+//             // Start a clean session
+//             if (session_status() === PHP_SESSION_ACTIVE) {
+//                 session_regenerate_id(true);
+//             }
+            
+//             // Set gym owner session variables
+//             $_SESSION['owner_id'] = $owner['id'];
+//             $_SESSION['owner_name'] = $owner['name'];
+//             $_SESSION['owner_email'] = $owner['email'];
+//             $_SESSION['owner_phone'] = $owner['phone'];
+//             $_SESSION['owner_address'] = $owner['address'];
+//             $_SESSION['owner_city'] = $owner['city'];
+//             $_SESSION['owner_state'] = $owner['state'];
+//             $_SESSION['owner_country'] = $owner['country'];
+//             $_SESSION['owner_zip_code'] = $owner['zip_code'];
+//             $_SESSION['owner_profile_picture'] = $owner['profile_picture'];
+//             $_SESSION['owner_gym_limit'] = $owner['gym_limit'];
+//             $_SESSION['owner_account_type'] = $owner['account_type'];
+//             $_SESSION['last_activity'] = time();
+//             $_SESSION['user_ip'] = $_SERVER['REMOTE_ADDR'];
+            
+//             // Initialize gym data
+//             $this->initializeGymOwnerSession($owner['id']);
+            
+//             // Log the login
+//             $this->logGymOwnerActivity($owner['id'], 'login', 'Gym owner logged in');
+//             return true;
+//         }
+
+//         $this->incrementLoginAttempts($email);
+//         return false;
+//     } catch (Exception $e) {
+//         error_log("Gym owner login error: " . $e->getMessage());
+//         return false;
+//     }
+// }
+
     
     /**
      * Login for gym owners

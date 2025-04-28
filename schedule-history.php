@@ -192,19 +192,24 @@ function updateScheduleStatuses($conn, $user_id)
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <?php if ($upcoming_schedules || $past_schedules): ?>
             <!-- Header Section -->
-            <div class="flex justify-between items-center mb-10">
-                <h1 class="text-3xl font-bold text-white">My Workout Schedule</h1>
-                <div class="flex space-x-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-10">
+                <h1 class="text-2xl sm:text-3xl font-bold text-white">
+                    My Workout Schedule
+                </h1>
+
+                <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <button id="refresh-schedules"
-                        class="bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600 transform hover:scale-105 transition-all duration-300">
+                        class="bg-blue-500 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-full font-bold hover:bg-blue-600 transform hover:scale-105 transition-all duration-300 w-full sm:w-auto">
                         <i class="fas fa-sync-alt mr-2"></i>Refresh
                     </button>
+
                     <a href="schedule.php"
-                        class="bg-yellow-400 text-black px-6 py-3 rounded-full font-bold hover:bg-yellow-500 transform hover:scale-105 transition-all duration-300">
+                        class="bg-yellow-400 text-black px-5 sm:px-6 py-2.5 sm:py-3 rounded-full font-bold hover:bg-yellow-500 transform hover:scale-105 transition-all duration-300 text-center w-full sm:w-auto">
                         <i class="fas fa-plus mr-2"></i>Schedule New Workout
                     </a>
                 </div>
             </div>
+
 
             <!-- Scheduling Policies Section -->
             <div class="bg-gray-800 bg-opacity-50 backdrop-blur-lg rounded-3xl overflow-hidden mb-10">
@@ -349,35 +354,37 @@ function updateScheduleStatuses($conn, $user_id)
                                         $isWorkoutInFuture = $workoutDateTime > $currentDateTime;
                                         ?>
                                         <div class="mt-6 flex flex-col space-y-4">
-                                            <div class="flex flex-wrap justify-end gap-4">
+                                            <div class="flex flex-col sm:flex-wrap sm:flex-row justify-end gap-3 sm:gap-4">
                                                 <?php if ($isWorkoutInFuture): ?>
-                                                    <!-- Reschedule Button - Disabled if within policy limits but still visible -->
+                                                    <!-- Reschedule Button -->
                                                     <button
                                                         onclick="rescheduleWorkout(<?= $schedule['id'] ?>, <?= $canReschedule ? 'true' : 'false' ?>, '<?= $rescheduleMessage ?>')"
-                                                        class="bg-blue-600 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-700 transform hover:scale-105 transition-all duration-300 <?= !$canReschedule ? 'opacity-50 cursor-not-allowed' : '' ?>">
+                                                        class="bg-blue-600 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-full font-bold hover:bg-blue-700 transform hover:scale-105 transition-all duration-300 <?= !$canReschedule ? 'opacity-50 cursor-not-allowed' : '' ?> w-full sm:w-auto text-center">
                                                         <i class="fas fa-calendar-alt mr-2"></i>Reschedule Time
                                                     </button>
 
-                                                    <!-- Change Gym Button - New button to change gym -->
+                                                    <!-- Cancel Button -->
+                                                    <button
+                                                        onclick="cancelSchedule(<?= $schedule['id'] ?>, <?= $canCancel ? 'true' : 'false' ?>, '<?= $cancelMessage ?>')"
+                                                        class="bg-red-700 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-full font-bold hover:bg-red-600 transform hover:scale-105 transition-all duration-300 <?= !$canCancel ? 'opacity-50 cursor-not-allowed' : '' ?> w-full sm:w-auto text-center">
+                                                        <i class="fas fa-times mr-2"></i>Cancel
+                                                    </button>
+
+                                                    <!-- Change Gym Button -->
                                                     <a href="change_gym.php?schedule_id=<?= $schedule['id'] ?>"
-                                                        class="bg-purple-600 text-white px-6 py-3 rounded-full font-bold hover:bg-purple-700 transform hover:scale-105 transition-all duration-300 text-center">
+                                                        class="bg-purple-600 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-full font-bold hover:bg-purple-700 transform hover:scale-105 transition-all duration-300 text-center w-full sm:w-auto">
                                                         <i class="fas fa-map-marker-alt mr-2"></i>Change Gym
                                                     </a>
 
-                                                    <!-- Cancel Button - Disabled if within policy limits but still visible -->
-                                                    <button
-                                                        onclick="cancelSchedule(<?= $schedule['id'] ?>, <?= $canCancel ? 'true' : 'false' ?>, '<?= $cancelMessage ?>')"
-                                                        class="bg-red-700 text-white px-6 py-3 rounded-full font-bold hover:bg-red-600 transform hover:scale-105 transition-all duration-300 <?= !$canCancel ? 'opacity-50 cursor-not-allowed' : '' ?>">
-                                                        <i class="fas fa-times mr-2"></i>Cancel
-                                                    </button>
                                                 <?php else: ?>
-                                                    <!-- If workout is in the past or ongoing, show message instead of buttons -->
-                                                    <div class="text-yellow-400 text-sm text-center">
+                                                    <!-- Message if workout can't be modified -->
+                                                    <div class="text-yellow-400 text-sm text-center w-full">
                                                         <i class="fas fa-exclamation-triangle mr-1"></i>
                                                         This workout has already started or passed and cannot be modified.
                                                     </div>
                                                 <?php endif; ?>
                                             </div>
+
 
                                             <?php if ($isWorkoutInFuture && (!$canReschedule || !$canCancel)): ?>
                                                 <div class="text-yellow-400 text-sm text-center mt-2">

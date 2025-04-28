@@ -1,10 +1,10 @@
 <?php
 ob_start();
-include '../includes/navbar.php';
+session_start();
 
 // Check if admin is logged in
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -122,12 +122,14 @@ $page_title = "Edit Gym Policy";
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
+<body class="bg-gray-900 text-white">
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Edit Gym Policy</h1>
+                <h1 class="text-3xl font-bold ">Edit Gym Policy</h1>
                 <p class="text-gray-600">Update cancellation, rescheduling, and late fee policies for <?= htmlspecialchars($policy['gym_name']) ?></p>
             </div>
             <div class="mt-4 md:mt-0">
@@ -174,7 +176,7 @@ $page_title = "Edit Gym Policy";
                 <form method="POST" action="" class="p-6">
                     <input type="hidden" name="update_policy" value="1">
                     
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 text-black">
                         <div>
                             <label for="cancellation_hours" class="block text-sm font-medium text-gray-700 mb-1">Cancellation Hours</label>
                             <input type="number" id="cancellation_hours" name="cancellation_hours" value="<?= $policy['cancellation_hours'] ?>" min="1" max="72" 
@@ -190,7 +192,7 @@ $page_title = "Edit Gym Policy";
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 text-black">
                         <div>
                             <label for="cancellation_fee" class="block text-sm font-medium text-gray-700 mb-1">Cancellation Fee (₹)</label>
                             <input type="number" id="cancellation_fee" name="cancellation_fee" value="<?= $policy['cancellation_fee'] ?>" min="0" step="0.01" 
@@ -267,12 +269,12 @@ $page_title = "Edit Gym Policy";
                         <div class="pt-4 border-t border-gray-200">
                             <div class="flex items-center mb-3">
                                 <div class="w-3 h-3 rounded-full <?= $gym['status'] === 'active' ? 'bg-green-500' : 'bg-red-500' ?> mr-2"></div>
-                                <span class="text-sm font-medium"><?= ucfirst($gym['status']) ?></span>
+                                <span class="text-sm font-medium text-black"><?= ucfirst($gym['status']) ?></span>
                             </div>
                             
                             <div class="flex items-center">
                                 <div class="w-3 h-3 rounded-full <?= $gym['is_open'] ? 'bg-green-500' : 'bg-red-500' ?> mr-2"></div>
-                                <span class="text-sm font-medium"><?= $gym['is_open'] ? 'Open Now' : 'Closed' ?></span>
+                                <span class="text-sm font-medium text-black"><?= $gym['is_open'] ? 'Open Now' : 'Closed' ?></span>
                             </div>
                         </div>
                         
@@ -345,21 +347,6 @@ $page_title = "Edit Gym Policy";
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="bg-white py-6 mt-8">
-        <div class="container mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-sm text-gray-600">&copy; <?= date('Y') ?> Fitness Hub. All rights reserved.</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="index.php" class="text-sm text-gray-600 hover:text-indigo-600">Dashboard</a>
-                    <a href="privacy_policy.php" class="text-sm text-gray-600 hover:text-indigo-600">Privacy Policy</a>
-                    <a href="terms_of_service.php" class="text-sm text-gray-600 hover:text-indigo-600">Terms of Service</a>
-                </div>
-            </div>
-        </div>
-    </footer>
 </body>
 </html>
 

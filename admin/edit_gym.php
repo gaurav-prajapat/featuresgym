@@ -1,7 +1,7 @@
 <?php
 ob_start();
+session_start();
 require_once '../config/database.php';
-include '../includes/navbar.php';
 
 // Ensure user is authenticated and has admin role
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
@@ -228,7 +228,24 @@ $images_stmt = $conn->prepare($images_query);
 $images_stmt->execute([':gym_id' => $gym_id]);
 $gym_images = $images_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Gym - Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .transaction-card {
+            transition: all 0.3s ease;
+        }
+        .transaction-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
 <body class="bg-gray-900 text-white">
     <?php include 'includes/sidebar.php'; ?>
     
@@ -563,6 +580,6 @@ $gym_images = $images_stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 </style>
 
-<?php include('../includes/footer.php'); ?>
+
 
 

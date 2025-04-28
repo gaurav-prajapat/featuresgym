@@ -1,9 +1,9 @@
 <?php
 ob_start();
-include '../includes/navbar.php';
+session_start();
 
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -1139,8 +1139,10 @@ function generateMembershipsReport($conn, $start_date, $end_date, $gym_id, $tier
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
-    <div class="flex-grow container mx-auto px-4 py-8">
+<body class="bg-gray-900 text-white">
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
         <div class="print-only text-center mb-8">
             <h1 class="text-3xl font-bold">Fitness Hub - <?= ucfirst($report_type) ?> Report</h1>
             <p class="text-gray-600">
@@ -1150,7 +1152,7 @@ function generateMembershipsReport($conn, $start_date, $end_date, $gym_id, $tier
         
         <!-- Header -->
         <div class="flex justify-between items-center mb-8 no-print">
-            <h1 class="text-3xl font-bold text-gray-800">Reports</h1>
+            <h1 class="text-3xl font-bold ">Reports</h1>
             <div class="flex space-x-2">
                 <button onclick="window.print()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center">
                     <i class="fas fa-print mr-2"></i> Print Report

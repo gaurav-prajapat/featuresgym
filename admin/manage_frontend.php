@@ -267,15 +267,15 @@ $homepage_settings = $site_settings['homepage'] ?? [
 ];
 
 $seo_settings = $site_settings['seo'] ?? [
-    'site_title' => 'ProFitMart - Find Your Perfect Gym',
-    'meta_description' => 'ProFitMart helps you find and book the best gyms near you. Discover fitness centers, compare plans, and schedule your workouts.',
+    'site_title' => 'Features Gym - Find Your Perfect Gym',
+    'meta_description' => 'Features Gym helps you find and book the best gyms near you. Discover fitness centers, compare plans, and schedule your workouts.',
     'meta_keywords' => 'gym, fitness, workout, health, exercise, gym booking',
     'google_analytics' => ''
 ];
 
 $footer_settings = $site_settings['footer'] ?? [
-    'footer_text' => 'ProFitMart helps you find and book the best gyms near you.',
-    'copyright_text' => '© ' . date('Y') . ' ProFitMart. All rights reserved.',
+    'footer_text' => 'Features Gym helps you find and book the best gyms near you.',
+    'copyright_text' => '© ' . date('Y') . ' Features Gym. All rights reserved.',
     'facebook_url' => 'https://facebook.com/',
     'twitter_url' => 'https://twitter.com/',
     'instagram_url' => 'https://instagram.com/',

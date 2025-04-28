@@ -4,8 +4,8 @@ require_once '../config/database.php';
 session_start();
 
 // Check if user is logged in as admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: /profitmarts/FlexFit/views/auth/login.php');
+if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
+    header('Location: ./login.php');
     exit();
 }
 
@@ -107,9 +107,9 @@ try {
             $query = "
                 SELECT 
                     DATE(gr.date) as date,
-                    SUM(gr.amount) as total_amount,
+                    SUM(gr.amount+ gr.admin_cut) as gym_revenue,
                     SUM(gr.admin_cut) as admin_revenue,
-                    SUM(gr.amount - gr.admin_cut) as gym_revenue,
+                    SUM(gr.amount) as total_amount,
                     g.name as gym_name,
                     gr.source_type
                 FROM gym_revenue gr
@@ -133,9 +133,9 @@ try {
             // Get summary
             $summary_query = "
                 SELECT 
-                    SUM(gr.amount) as total_revenue,
+                    SUM(gr.amount + gr.admin_cut) as total_revenue,
                     SUM(gr.admin_cut) as admin_revenue,
-                    SUM(gr.amount - gr.admin_cut) as gym_revenue,
+                    SUM(gr.amount) as gym_revenue,
                     COUNT(DISTINCT gr.gym_id) as total_gyms,
                     COUNT(DISTINCT DATE(gr.date)) as total_days
                 FROM gym_revenue gr
@@ -157,9 +157,9 @@ try {
             $chart_query = "
                 SELECT 
                     DATE(gr.date) as date,
-                    SUM(gr.amount) as total_amount,
+                    SUM(gr.amount + gr.admin_cut) as total_amount,
                     SUM(gr.admin_cut) as admin_revenue,
-                    SUM(gr.amount - gr.admin_cut) as gym_revenue
+                    SUM(gr.amount) as gym_revenue
                 FROM gym_revenue gr
                 WHERE DATE(gr.date) BETWEEN ? AND ?
             ";
@@ -888,9 +888,9 @@ $chart_colors_json = isset($chart_colors_final) ? json_encode($chart_colors_fina
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Gym</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Source</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Total Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Admin Revenue</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Gym Revenue</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Admin Revenue</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Total Amount</th>
                                     <?php elseif ($report_type === 'memberships'): ?>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Member</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Gym</th>

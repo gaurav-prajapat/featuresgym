@@ -1,10 +1,9 @@
 <?php
-ob_start();
-include '../includes/navbar.php';
+session_start();
 
 // Check if admin is logged in
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -199,12 +198,14 @@ $page_title = "Activity Logs";
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8 pt-20">
+<body class="bg-gray-900 text-white">
+    <?php include 'includes/sidebar.php'; ?>
+    
+    <div class="ml-0 lg:ml-64 p-4 sm:p-6 transition-all duration-200">
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Activity Logs</h1>
+                <h1 class="text-3xl font-bold ">Activity Logs</h1>
                 <p class="text-gray-600">Monitor all system activities and user actions</p>
             </div>
             <div class="mt-4 md:mt-0">
@@ -585,21 +586,7 @@ $page_title = "Activity Logs";
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="bg-white py-6 mt-auto">
-        <div class="container mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-sm text-gray-600">&copy; <?= date('Y') ?> Fitness Hub. All rights reserved.</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="index.php" class="text-sm text-gray-600 hover:text-indigo-600">Dashboard</a>
-                    <a href="privacy_policy.php" class="text-sm text-gray-600 hover:text-indigo-600">Privacy Policy</a>
-                    <a href="terms_of_service.php" class="text-sm text-gray-600 hover:text-indigo-600">Terms of Service</a>
-                </div>
-            </div>
-        </div>
-    </footer>
+ 
 
     <script>
         // Show delete modal

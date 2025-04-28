@@ -4,7 +4,7 @@ session_start();
 
 // Check if admin is logged in
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -121,7 +121,7 @@ $page_title = "Insert Gym Policies";
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Insert Gym Policies</h1>
+                <h1 class="text-3xl font-bold ">Insert Gym Policies</h1>
                 <p class="text-gray-600">Set up cancellation, rescheduling, and late fee policies for gyms</p>
             </div>
             <div class="mt-4 md:mt-0">
@@ -175,15 +175,15 @@ $page_title = "Insert Gym Policies";
                                 <div class="mb-2">
                                     <label class="inline-flex items-center">
                                         <input type="checkbox" id="select-all" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                                        <span class="ml-2 font-medium">Select All</span>
+                                        <span class="ml-2 font-medium text-black">Select All</span>
                                     </label>
                                 </div>
                                 <div class="border-t border-gray-200 pt-2">
                                     <?php foreach ($gyms_without_policies as $gym): ?>
                                         <div class="py-1">
                                             <label class="inline-flex items-center">
-                                                <input type="checkbox" name="selected_gyms[]" value="<?= $gym['gym_id'] ?>" class="gym-checkbox rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                                                <span class="ml-2"><?= htmlspecialchars($gym['name']) ?> (ID: <?= $gym['gym_id'] ?>)</span>
+                                                <input type="checkbox" name="selected_gyms[]" value="<?= $gym['gym_id'] ?>" class="gym-checkbox rounded border-gray-300 text-black shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                                <span class="ml-2 text-black"><?= htmlspecialchars($gym['name']) ?> (ID: <?= $gym['gym_id'] ?>)</span>
                                             </label>
                                         </div>
                                     <?php endforeach; ?>
@@ -395,21 +395,7 @@ $page_title = "Insert Gym Policies";
         <?php endif; ?>
     </div>
 
-    <!-- Footer -->
-    <footer class="bg-white py-6 mt-auto">
-        <div class="container mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-sm text-gray-600">&copy; <?= date('Y') ?> Fitness Hub. All rights reserved.</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="index.php" class="text-sm text-gray-600 hover:text-indigo-600">Dashboard</a>
-                    <a href="privacy_policy.php" class="text-sm text-gray-600 hover:text-indigo-600">Privacy Policy</a>
-                    <a href="terms_of_service.php" class="text-sm text-gray-600 hover:text-indigo-600">Terms of Service</a>
-                </div>
-            </div>
-        </div>
-    </footer>
+ 
 
     <script>
         // Handle "Select All" checkbox

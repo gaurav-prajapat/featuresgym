@@ -4,7 +4,7 @@ session_start();
 
 // Check if admin is logged in
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -597,6 +597,5 @@ try {
     });
 </script>
 
-<?php include '../includes/footer.php'; ?>
 
 

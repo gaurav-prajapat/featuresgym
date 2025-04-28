@@ -3,7 +3,7 @@ require_once '../config/database.php';
 include '../includes/navbar.php';
 
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -84,7 +84,7 @@ $gymMembershipPlans = $membershipStmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <div class="container mx-auto p-6">
-    <h1 class="text-3xl font-bold text-gray-800 mb-6">Gym Owner Details</h1>
+    <h1 class="text-3xl font-bold  mb-6">Gym Owner Details</h1>
     <div class="bg-white shadow-md rounded-md p-4">
         <h2 class="text-xl font-semibold text-gray-700"><?php echo htmlspecialchars($owner['name']); ?></h2>
         <p class="text-gray-600"><strong>Email:</strong> <?php echo htmlspecialchars($owner['email']); ?></p>

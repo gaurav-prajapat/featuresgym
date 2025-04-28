@@ -5,7 +5,7 @@ session_start();
 
 // Check if user is logged in as admin
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -252,7 +252,9 @@ $availablePermissions = [
     'approve_gyms' => 'Approve Gyms',
     'approve_reviews' => 'Approve Reviews',
     'manage_promotions' => 'Manage Promotions',
-    'manage_tournaments' => 'Manage Tournaments'
+    'manage_tournaments' => 'Manage Tournaments',
+     'manage_analytics' => 'Manage Analytics',
+     'payouts'=>'Manage Payouts'
 ];
 ?>
 

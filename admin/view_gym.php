@@ -5,7 +5,7 @@ session_start();
 
 // Check if user is logged in as admin
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -22,14 +22,14 @@ if ($gymId <= 0) {
 
 // Fetch gym details with owner information
 $sql = "SELECT g.*, 
-        u.username as owner_name, 
+        u.name as owner_name, 
         u.email as owner_email,
         u.phone as owner_phone,
         (SELECT COUNT(*) FROM user_memberships um WHERE um.gym_id = g.gym_id AND um.status = 'active') as active_memberships,
         (SELECT COUNT(*) FROM reviews r WHERE r.gym_id = g.gym_id) as review_count,
         (SELECT AVG(rating) FROM reviews r WHERE r.gym_id = g.gym_id AND r.status = 'approved') as avg_rating
         FROM gyms g
-        LEFT JOIN users u ON g.owner_id = u.id
+        LEFT JOIN gym_owners u ON g.owner_id = u.id
         WHERE g.gym_id = ?";
 
 $stmt = $conn->prepare($sql);

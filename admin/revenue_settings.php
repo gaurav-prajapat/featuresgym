@@ -2,7 +2,7 @@
 ob_start();
 include '../includes/navbar.php';
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: login.php');
+    header('Location: ./login.php');
     exit();
 }
 
@@ -382,7 +382,7 @@ $revenue_by_cut_type = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div>
-                <h1 class="text-3xl font-bold text-gray-800">Revenue Settings</h1>
+                <h1 class="text-3xl font-bold ">Revenue Settings</h1>
                 <p class="text-gray-600">Manage how revenue is distributed between the platform and gym owners</p>
             </div>
             <div class="mt-4 md:mt-0">
@@ -783,21 +783,7 @@ $revenue_by_cut_type = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </form>
     </div>
 
-    <!-- Footer -->
-    <footer class="bg-white py-6 mt-auto">
-        <div class="container mx-auto px-4">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-sm text-gray-600">&copy; <?= date('Y') ?> Fitness Hub. All rights reserved.</p>
-                </div>
-                <div class="flex space-x-4">
-                    <a href="privacy_policy.php" class="text-sm text-gray-600 hover:text-indigo-600">Privacy Policy</a>
-                    <a href="terms_of_service.php" class="text-sm text-gray-600 hover:text-indigo-600">Terms of Service</a>
-                    <a href="contact.php" class="text-sm text-gray-600 hover:text-indigo-600">Contact Us</a>
-                </div>
-            </div>
-        </div>
-    </footer>
+ 
 
     <script>
         // Toggle modals
